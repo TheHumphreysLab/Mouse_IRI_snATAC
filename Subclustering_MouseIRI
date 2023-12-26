@@ -1,0 +1,81 @@
+library(Signac) 
+library(Seurat)
+library(GenomeInfoDb)
+library(harmony) 
+library(EnsDb.Mmusculus.v79)
+library(ggplot2)
+library(tibble)
+library(dplyr)
+library(harmony)
+library(BuenColors)
+set.seed(1234)
+
+#Subset PCT and PST from the whole dataset
+PTC <- subset(atacAggr,idents = c("PCT","PST"))
+"First subclustering"
+PTC <- RunTFIDF(PTC)
+PTC <- FindTopFeatures(PTC, min.cutoff = 'q0')
+PTC <- RunSVD(
+  object = PTC
+)
+
+PTC <- RunHarmony(
+  object = PTC,
+  group.by.vars = 'orig.ident',
+  reduction = 'lsi',
+  assay.use = 'peaks',
+  project.dim = FALSE
+)
+
+PTC <- RunUMAP(PTC, dims = 2:20, reduction = 'harmony')
+PTC <- FindNeighbors(object = PTC, reduction = "harmony", dims = 2:20)
+PTC <- FindClusters(object = PTC, verbose = FALSE, algorithm = 3,resolution = 0.4)
+PT_figs1 <- DimPlot(PTC,label = T) #621x473
+
+#Identify / remove doublets, based on gene activities
+features <- c("Slc5a12","Slc34a1","Acsm1","Lrp2","Slc7a13","Mep1b",
+              "Epha7","Slc14a2","Cldn16","Slc12a1","Umod","Slc12a3",
+              "Slc8a1","Scnn1b","Aqp2","Kit","Slc26a4","Wt1","Nphs1",
+              "Ncam1","Upk1b","Flt1","Pecam1","Pdgfrb","Acta2","Ptprc","Cd86","Themis")
+
+DefaultAssay(PTC) <- "RNA"
+
+levels(PTC) <- rev(levels(PTC)) #859x473
+DotPlot(PTC, features = features, cols = c("lightyellow","darkred")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #850x450
+levels(PTC) <- rev(levels(PTC))
+
+#Remove the remaining potential multiples / low-quality nuclei with non-PTC celltype marker activities (5,6,10)
+PTC <- subset(PTC,idents = c(5,6,10),invert=T)
+
+#Re-subclustering
+DefaultAssay(PTC) <- "peaks"
+PTC <- RunTFIDF(PTC)
+PTC <- FindTopFeatures(PTC, min.cutoff = 'q0')
+PTC <- RunSVD(
+  object = PTC
+)
+
+PTC <- RunHarmony(
+  object = PTC,
+  group.by.vars = 'orig.ident',
+  reduction = 'lsi',
+  assay.use = 'peaks',
+  project.dim = FALSE
+)
+
+PTC <- RunUMAP(PTC, dims = 2:20, reduction = 'harmony')
+PTC <- FindNeighbors(object = PTC, reduction = "harmony", dims = 2:20)
+PTC <- FindClusters(object = PTC, verbose = FALSE, algorithm = 3,resolution = 0.3)
+DimPlot(PTC,label = T)
+
+Idents(PTC) <- "seurat_clusters"
+new.cluster.ids <- c("Healthy_S1","Healthy_S2","Injured_S1","Injured_S2","Acute_Stressed_S1/2",
+                     "Injured_S3","Healthy_S3","Failed_repair_PTC","Severe_Injured_PTC")
+names(new.cluster.ids) <- levels(PTC)
+PTC <- RenameIdents(PTC, new.cluster.ids)
+levels(PTC) <- c("Healthy_S1","Healthy_S2","Healthy_S3","Acute_Stressed_S1/2","Injured_S1","Injured_S2","Injured_S3",
+                "Severe_Injured_PTC","Failed_repair_PTC")
+
+PTC@meta.data[["subtype"]] <- PTC@active.ident

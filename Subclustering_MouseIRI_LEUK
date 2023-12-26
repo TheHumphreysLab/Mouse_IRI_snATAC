@@ -1,0 +1,62 @@
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(harmony)
+library(EnsDb.Mmusculus.v79)
+library(ggplot2)
+library(tibble)
+library(dplyr)
+library(harmony)
+library(BuenColors)
+library(openxlsx) 
+set.seed(1234)
+
+#Subset immune cell clusters from the whole dataset
+LEUK <- subset(atacAggr,idents = c("Immune1","Immune2"))
+
+#subclustering
+LEUK <- RunTFIDF(LEUK)
+LEUK <- FindTopFeatures(LEUK, min.cutoff = 'q0')
+LEUK <- RunSVD(
+  object = LEUK
+)
+
+LEUK <- RunHarmony(
+  object = LEUK,
+  group.by.vars = 'orig.ident',
+  reduction = 'lsi',
+  assay.use = 'peaks',
+  project.dim = FALSE
+)
+
+LEUK <- RunUMAP(LEUK, dims = 2:15, reduction = 'harmony')
+LEUK <- FindNeighbors(object = LEUK, reduction = "harmony", dims = 2:15)
+LEUK <- FindClusters(object = LEUK, verbose = FALSE, algorithm = 3,resolution = 0.2)
+DefaultAssay(LEUK) <- "RNA"
+
+#Identify / remove doublets, based on gene activities
+features <- c("Slc5a12","Slc13a3","Acsm1","Lrp2","Slc34a1","Slc7a13","Mep1b","Slc5a8","Havcr1","Vcam1",
+              "Epha7","Slc14a2","Slc12a1","Umod","Slc12a3","Trpm6","Slc8a1","Scnn1b","Aqp2","Kit","Slc26a4",
+              "Wt1","Nphs1","Upk1b","Flt1","Pecam1","Pdgfrb","Ptprc","Ikzf1","Cd86")
+
+levels(LEUK) <- rev(levels(LEUK))
+DotPlot(LEUK, features = features, cols = c("lightyellow","darkred")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #850x450
+levels(LEUK) <- rev(levels(LEUK))
+
+#Remove the remaining potential multiples / low-quality nuclei with other celltype marker activities (2,5,8,10)
+LEUK <- subset(LEUK,idents = c(2,5,8,10),invert=T)
+
+#subclustering
+DefaultAssay(LEUK) <- "peaks"
+LEUK <- RunUMAP(LEUK, dims = 2:15, reduction = 'harmony')
+LEUK <- FindNeighbors(object = LEUK, reduction = "harmony", dims = 2:15)
+LEUK <- FindClusters(object = LEUK, verbose = FALSE, algorithm = 3,resolution = 0.1)
+
+Idents(LEUK) <- "seurat_clusters"
+new.cluster.ids <- c("Mac2","Mac3","Mac1","Tcell","Mac5","Mac4","DC","Bcell")
+names(new.cluster.ids) <- levels(LEUK)
+LEUK <- RenameIdents(LEUK, new.cluster.ids)
+levels(LEUK) <- c("Mac1","Mac2","Mac3","Mac4","Mac5","DC","Tcell","Bcell")
+LEUK@meta.data[["subtype"]] <- LEUK@active.ident

@@ -30,7 +30,6 @@ PTC <- RunHarmony(
 PTC <- RunUMAP(PTC, dims = 2:20, reduction = 'harmony')
 PTC <- FindNeighbors(object = PTC, reduction = "harmony", dims = 2:20)
 PTC <- FindClusters(object = PTC, verbose = FALSE, algorithm = 3,resolution = 0.4)
-PT_figs1 <- DimPlot(PTC,label = T) #621x473
 
 #Identify / remove doublets, based on gene activities
 features <- c("Slc5a12","Slc34a1","Acsm1","Lrp2","Slc7a13","Mep1b",
@@ -68,7 +67,6 @@ PTC <- RunHarmony(
 PTC <- RunUMAP(PTC, dims = 2:20, reduction = 'harmony')
 PTC <- FindNeighbors(object = PTC, reduction = "harmony", dims = 2:20)
 PTC <- FindClusters(object = PTC, verbose = FALSE, algorithm = 3,resolution = 0.3)
-DimPlot(PTC,label = T)
 
 Idents(PTC) <- "seurat_clusters"
 new.cluster.ids <- c("Healthy_S1","Healthy_S2","Injured_S1","Injured_S2","Acute_Stressed_S1/2",

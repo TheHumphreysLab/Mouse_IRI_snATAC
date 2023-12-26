@@ -1,0 +1,329 @@
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(harmony)
+library(EnsDb.Mmusculus.v79)
+library(ggplot2)
+library(tibble)
+library(dplyr)
+library(harmony)
+set.seed(1234)
+
+# load aggregated snATACseq data obtained with CellrangerATACv2.0 and create a seurat object
+counts <- Read10X_h5("filtered_peak_bc_matrix.h5")
+metadata <- read.csv("singlecell.csv", header = TRUE, row.names = 1)
+aggcsv <- read.csv("aggregation_csv.csv",header = TRUE, row.names = 1)
+
+chrom_assay <- CreateChromatinAssay(
+  counts = counts,
+  sep = c(":", "-"),
+  fragments = "fragments.tsv.gz",
+  min.cells = 5,
+  min.features = 200
+)
+
+atacAggr <- CreateSeuratObject(
+  counts = chrom_assay,
+  assay = "peaks",
+  meta.data = metadata
+)
+
+# Add the mouse information
+gemgroup <- sapply(strsplit(rownames(atacAggr@meta.data), split="-"), "[[", 2) 
+current.gemgroups <- seq(length(rownames(aggcsv)))
+orig.ident <- c("14day-1","2day-1","2day-2","sham-1","14day-2","14day-3","sham-2",
+                "4hr-1","4hr-2","42day-1","2day-3","12hr-1","12hr-2","12hr-3",
+                "4hr-3","4hr-4","sham-3","42day-2","42day-3")
+sampleID <- plyr::mapvalues(gemgroup, from = current.gemgroups, to = orig.ident)
+atacAggr <- AddMetaData(object=atacAggr, metadata=data.frame(orig.ident=sampleID, 
+                                                             row.names=rownames(atacAggr@meta.data)))
+
+Idents(atacAggr) <- "orig.ident"
+levels(atacAggr) <- c("sham-1","sham-2","sham-3","4hr-1","4hr-2","4hr-3","4hr-4",
+                "12hr-1","12hr-2","12hr-3","2day-1","2day-2","2day-3",
+                "14day-1","14day-2","14day-3","42day-1","42day-2","42day-3")
+
+origident <- c("sham","sham","sham","4hr","4hr","4hr","4hr",
+               "12hr","12hr","12hr","2day","2day","2day",
+               "14day","14day","14day","42day","42day","42day")
+
+names(origident) <- levels(atacAggr)
+atacAggr <- RenameIdents(atacAggr, origident)
+atacAggr[["time"]] <- Idents(atacAggr)
+
+# extract gene annotations from EnsDb
+annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Mmusculus.v79)
+# change to UCSC style
+seqlevelsStyle(annotations) <- 'UCSC'
+genome(annotations) <- "mm10"
+
+# add the gene information to the object
+Annotation(atacAggr) <- annotations
+
+# compute nucleosome signal score per cell
+atacAggr <- NucleosomeSignal(object = atacAggr)
+
+# compute TSS enrichment score per cell
+atacAggr <- TSSEnrichment(object = atacAggr, fast = T)
+
+# add blacklist ratio and fraction of reads in peaks
+atacAggr$pct_reads_in_peaks <- atacAggr$peak_region_fragments / atacAggr$passed_filters * 100
+
+atacAggr$blacklist_fraction <- FractionCountsInRegion(
+  object = atacAggr, 
+  assay = 'peaks',
+  regions = blacklist_mm10
+)
+
+#Doublet marking with Amulet; multiplet.rds is the multiplet list generated with Amulet
+multiplet <- readRDS("multiplet.rds")
+Multiplet_list <- intersect(multiplet$V1,colnames(atacAggr))
+Singlet_list <- setdiff(colnames(atacAggr),multiplet$V1)
+amulet_singlet <- as.data.frame(c(rep("Singlet", times = 195754)))
+rownames(amulet_singlet) <- c(Singlet_list)
+colnames(amulet_singlet) <- "amulet"
+amulet_multiplet <- as.data.frame(c(rep("Multiplet", times = 22356)))
+rownames(amulet_multiplet) <- c(Multiplet_list)
+colnames(amulet_multiplet) <- "amulet"
+amuletdata <- rbind(amulet_singlet,amulet_multiplet)
+atacAggr <- AddMetaData(atacAggr,amuletdata)
+
+# filter the aggregated snATACseq object using empirically-determined QC parameters
+atacAggr <- subset(
+  x = atacAggr,
+  subset = peak_region_fragments > 2000 &
+    peak_region_fragments < 100000 &
+    pct_reads_in_peaks > 25 &
+    blacklist_fraction < 0.08 &
+    nucleosome_signal < 4 &
+    TSS.enrichment > 2
+)
+
+Idents(atacAggr) <- "amulet"
+atacAggr <- subset(atacAggr,idents = "Singlet") #Remove doublets predicted by Amulet
+
+#Generate gene activity matrix
+gene.activities <- GeneActivity(atacAggr) 
+atacAggr[['RNA']] <- CreateAssayObject(counts = gene.activities)
+atacAggr <- NormalizeData(
+  object = atacAggr,
+  assay = 'RNA',
+  normalization.method = 'LogNormalize',
+  scale.factor = median(atacAggr$nCount_RNA)
+)
+
+#rnaAggr : Mouse IRI snRNA-seq dataset (Proc. Natl. Acad. Sci. U.S.A., 2020, Jul 7;117(27):15874-15883)
+rnaAggr <- readRDS("snRNA-seq_dataset_PNAS2020_Kirita.rds")
+lowres.cluster.ids <- c("PT","PT","PT","PT","PT","DTL-ATL","TAL","TAL","TAL","TAL",
+                        "DCT_CNT","DCT_CNT","DCT_CNT","PC","PC",
+                        "IC","IC","URO","PODO","PEC","EC","EC","FIB","FIB","LEUK","LEUK")
+names(lowres.cluster.ids) <- levels(rnaAggr)
+rnaAggr <- RenameIdents(rnaAggr, lowres.cluster.ids)
+rnaAggr[["lowres.celltype"]] <- Idents(rnaAggr) #Low-resolution celltype assignment for snRNA-seq data (for label-transfer)
+
+#Label transfer (Seurat)
+DefaultAssay(atacAggr) <- "RNA"
+transfer_anchors <- FindTransferAnchors(reference = rnaAggr, query = atacAggr, features = VariableFeatures(object = rnaAggr), 
+                                        reference.assay = "RNA", query.assay = "RNA", reduction = "cca")
+
+celltype.predictions_highres <- TransferData(anchorset = transfer_anchors, refdata = rnaAggr$celltype_annotation_PNAS2020, 
+                                             weight.reduction = atacAggr[["lsi"]], dims = 2:30)
+
+celltype.predictions_lowres <- TransferData(anchorset = transfer_anchors, refdata = rnaAggr$lowres.celltype, 
+                                            weight.reduction = atacAggr[["lsi"]], dims = 2:30)
+
+
+predictions <- cbind(celltype.predictions_highres[,c(1,28)],celltype.predictions_lowres[,c(1,14)])
+colnames(predictions) <- c("highres_predicted.id","highres_prediction.score.max",
+                           "lowres_predicted.id","lowres_prediction.score.max")
+atacAggr <- AddMetaData(atacAggr,predictions)
+
+atacAggr <- subset(atacAggr,subset = lowres_prediction.score.max > 0.6) #Fitering nuclei with low-prediction scores (< 0.6)
+
+#clustering
+DefaultAssay(atacAggr) <- "peaks"
+atacAggr <- RunTFIDF(atacAggr)
+atacAggr <- FindTopFeatures(atacAggr, min.cutoff = 'q0')
+atacAggr <- RunSVD(
+  object = atacAggr
+)
+
+atacAggr <- RunHarmony(
+  object = atacAggr,
+  group.by.vars = 'orig.ident',
+  reduction = 'lsi',
+  assay.use = 'peaks',
+  project.dim = FALSE
+)
+
+atacAggr <- RunUMAP(atacAggr, dims = 2:30, reduction = 'harmony')
+atacAggr <- FindNeighbors(object = atacAggr, reduction = "harmony", dims = 2:30)
+atacAggr <- FindClusters(object = atacAggr, verbose = FALSE, algorithm = 3,resolution = 0.1)
+
+#Celltype annotation based on gene activity
+#One cluster (cluster11) is mainly from two samples (12hr-3 and sham-2) and no celltype markers => LowQC nuclei
+new.cluster.ids <- c("PCT","TAL","DCT_CNT","EC","PST","PC_URO","FIB","LEUK",
+                     "DTL_ATL","IC","PODO_PEC","LowQC") 
+names(new.cluster.ids) <- levels(atacAggr)
+atacAggr <- RenameIdents(atacAggr, new.cluster.ids)
+levels(atacAggr) <- c("PCT","PST","DTL_ATL","TAL","DCT_CNT","PC_URO","IC","PODO_PEC",
+                      "EC","FIB","LEUK","LowQC")
+atacAggr[["celltype"]] <- Idents(atacAggr)
+
+Fig_S1B <-DimPlot(atacAggr,label = T,repel = T,group.by =  "celltype") #Fig.S1B
+Fig_S1E <- DimPlot(atacAggr,label = T,group.by =  "lowres_predicted.id")+NoLegend() #Fig.S1E
+Fig_S1F <- DimPlot(atacAggr,label = T,group.by =  "highres_predicted.id")+NoLegend() #Fig.S1F
+
+Idents(atacAggr) <- "celltype"
+
+#The nuclei with inconsistency between predicted low-resolution celltype ("lowres_predicted.id") and 
+#annotation based on lineage-specific gene activity ("celltype") were further filtered out 
+#to remove remaining doublets and low-quality nuclei
+
+#Subset each celltype => Filtering out the nuclei with inconsistent predicted low-res annotations
+
+#PT
+PT <- subset(atacAggr,idents = c("PCT","PST"))
+Idents(PT) <- "lowres_predicted.id"
+PT <- subset(PT,idents = "PT") 
+cell_PT <- WhichCells(PT)
+
+#DTL_ATL
+DTL_ATL <- subset(atacAggr,idents = "DTL_ATL")
+Idents(DTL_ATL) <- "lowres_predicted.id"
+DTL_ATL <- subset(DTL_ATL,idents = "DTL-ATL") 
+cell_DTL_ATL <- WhichCells(DTL_ATL)
+
+#TAL
+TAL <- subset(atacAggr,idents = "TAL")
+Idents(TAL) <- "lowres_predicted.id"
+TAL <- subset(TAL,idents = "TAL") 
+cell_TAL <- WhichCells(TAL)
+
+#DCT_CNT
+DCT_CNT <- subset(atacAggr,idents = "DCT_CNT")
+Idents(DCT_CNT) <- "lowres_predicted.id"
+DCT_CNT <- subset(DCT_CNT,idents = "DCT_CNT") 
+cell_DCT_CNT <- WhichCells(DCT_CNT)
+
+#PC_URO
+PC_URO <- subset(atacAggr,idents = "PC_URO")
+Idents(PC_URO) <- "lowres_predicted.id"
+PC_URO <- subset(PC_URO,idents = c("PC","URO")) 
+cell_PC_URO <- WhichCells(PC_URO)
+
+#IC
+IC <- subset(atacAggr,idents = "IC")
+Idents(IC) <- "lowres_predicted.id"
+IC <- subset(IC,idents = "IC") 
+cell_IC <- WhichCells(IC)
+
+#PODO_PEC
+PODO_PEC <- subset(atacAggr,idents = "PODO_PEC")
+Idents(PODO_PEC) <- "lowres_predicted.id"
+PODO_PEC <- subset(PODO_PEC,idents = c("PODO","PEC")) 
+cell_PODO_PEC <- WhichCells(PODO_PEC)
+
+#EC
+EC <- subset(atacAggr,idents = "EC")
+Idents(EC) <- "lowres_predicted.id"
+EC <- subset(EC,idents = "EC") 
+cell_EC <- WhichCells(EC)
+
+#FIB
+FIB <- subset(atacAggr,idents = "FIB")
+Idents(FIB) <- "lowres_predicted.id"
+FIB <- subset(FIB,idents = "FIB")  
+cell_FIB <- WhichCells(FIB)
+
+#LEUK
+LEUK <- subset(atacAggr,idents = "LEUK")
+Idents(LEUK) <- "lowres_predicted.id"
+LEUK <- subset(LEUK,idents = "LEUK") 
+cell_LEUK <- WhichCells(LEUK)
+
+#Subset the nuclei of high-confidence
+nuclei_high_confidence <- c(cell_PT,cell_DTL_ATL,cell_TAL,cell_DCT_CNT,cell_PC_URO,cell_IC,cell_PODO_PEC,cell_EC,cell_FIB,cell_LEUK)
+atacAggr <- subset(atacAggr,cells = nuclei_high_confidence)
+
+#Clustering
+
+DefaultAssay(atacAggr) <- "peaks"
+atacAggr <- RunTFIDF(atacAggr)
+atacAggr <- FindTopFeatures(atacAggr, min.cutoff = 'q0')
+atacAggr <- RunSVD(
+  object = atacAggr
+)
+
+atacAggr <- RunHarmony(
+  object = atacAggr,
+  group.by.vars = 'orig.ident',
+  reduction = 'lsi',
+  assay.use = 'peaks',
+  project.dim = FALSE
+)
+
+atacAggr <- RunUMAP(atacAggr, dims = 2:30, reduction = 'harmony')
+atacAggr <- FindNeighbors(object = atacAggr, reduction = "harmony", dims = 2:30)
+atacAggr <- FindClusters(object = atacAggr, verbose = FALSE, algorithm = 3,resolution = 0.7)
+
+#Annotate the nuclei based on celltype marker gene activities
+Idents(atacAggr) <- "seurat_clusters"
+new.cluster.ids <- c("PCT","PCT","PCT","cTAL","EC","PCT","PST","DCT","mTAL","CNT",
+                     "PC","PCT","Fib","PCT","IC","EC","DTL_ATL","Immune1","PCT","PST","PC","PCT",
+                     "Immune2","PODO","DTL_ATL","URO","Per","PEC","PCT","PC")
+names(new.cluster.ids) <- levels(atacAggr)
+atacAggr <- RenameIdents(atacAggr, new.cluster.ids)
+levels(atacAggr) <- c("PCT","PST","DTL_ATL","cTAL","mTAL","DCT","CNT","PC","IC","PODO","PEC","URO",
+                      "EC","Fib","Per","Immune1","Immune2")
+atacAggr[["celltype"]] <- Idents(atacAggr)
+Idents(atacAggr) <- "celltype"
+
+#Motif analysis (Chromvar)
+library(JASPAR2022)
+library(TFBSTools)
+library(BSgenome.Mmusculus.UCSC.mm10)
+library(patchwork)
+
+DefaultAssay(atacAggr) <- 'peaks'
+gr <- granges(atacAggr)
+seq_keep <- seqnames(gr) %in% seqnames(BSgenome.Mmusculus.UCSC.mm10) 
+seq_keep <- as.vector(seq_keep)
+feat.keep <- GRangesToString(grange = gr[seq_keep])
+atac_chrom <- subset(atacAggr, features = feat.keep)
+
+pfm <- getMatrixSet(
+  x = JASPAR2022,
+  opts = list(collection = "CORE", tax_group = 'vertebrates', all_versions = F)
+)
+
+# add motif information
+atac_chrom <- AddMotifs(
+  object = atac_chrom,
+  genome = BSgenome.Mmusculus.UCSC.mm10,
+  pfm = pfm
+)
+
+atac_chrom <- RunChromVAR(
+  object = atac_chrom,
+  genome = BSgenome.Mmusculus.UCSC.mm10
+)
+
+atacAggr@assays[["chromvar"]] <- atac_chrom@assays[["chromvar"]]
+
+#sessionInfo()
+#R version 4.2.2 (2022-10-31)
+#Platform: x86_64-pc-linux-gnu (64-bit)
+#Running under: Ubuntu 20.04.2 LTS
+
+#[1] patchwork_1.1.1                    BSgenome.Mmusculus.UCSC.mm10_1.4.0 BSgenome_1.60.0                   
+#[4] rtracklayer_1.52.1                 Biostrings_2.60.2                  XVector_0.32.0                    
+#[7] TFBSTools_1.36.0                   JASPAR2022_0.99.7                  BiocFileCache_2.0.0               
+#[10] dbplyr_2.1.1                       BuenColors_0.5.6                   MASS_7.3-53.1                     
+#[13] dplyr_1.0.7                        tibble_3.1.6                       ggplot2_3.3.5                     
+#[16] EnsDb.Mmusculus.v79_2.99.0         ensembldb_2.16.4                   AnnotationFilter_1.16.0           
+#[19] GenomicFeatures_1.44.2             AnnotationDbi_1.54.1               Biobase_2.52.0                    
+#[22] GenomicRanges_1.44.0               harmony_0.1.0                      Rcpp_1.0.8                        
+#[25] GenomeInfoDb_1.39.1                IRanges_2.26.0                     S4Vectors_0.30.2                  
+#[28] BiocGenerics_0.38.0                SeuratObject_4.0.1                 Seurat_4.0.2                      
+#[31] Signac_1.4.0                      

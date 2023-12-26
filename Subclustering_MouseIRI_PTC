@@ -12,7 +12,7 @@ set.seed(1234)
 
 #Subset PCT and PST from the whole dataset
 PTC <- subset(atacAggr,idents = c("PCT","PST"))
-"First subclustering"
+#subclustering
 PTC <- RunTFIDF(PTC)
 PTC <- FindTopFeatures(PTC, min.cutoff = 'q0')
 PTC <- RunSVD(

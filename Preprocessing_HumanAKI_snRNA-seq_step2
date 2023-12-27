@@ -1,0 +1,111 @@
+#Data integration after preprocessing of individual datasets
+#Preprocessing / aggregation of control datasets were similarly performed before
+#https://github.com/TheHumphreysLab/Multimodal_analysis_ADPKD/blob/main/1_RNA_individual_data.R
+
+library(Seurat)
+library(ggplot2)
+library(sctransform)
+library(harmony)
+library(Rcpp)
+library(dplyr)
+set.seed(1234)
+
+######### AKI dataset ##########
+
+#AKI_1/2/3/4
+AKI_1@meta.data[["orig.ident"]] <- "AKI1"
+AKI_2@meta.data[["orig.ident"]] <- "AKI2"
+AKI_3@meta.data[["orig.ident"]] <- "AKI3"
+AKI_4@meta.data[["orig.ident"]] <- "AKI4"
+
+# Integration (AKI dataset)
+AKI.list <- list(AKI_1,AKI_2,AKI_3,AKI_4)
+AKI.list <- lapply(X = AKI.list, FUN = SCTransform)
+features <- SelectIntegrationFeatures(object.list = AKI.list, nfeatures = 3000)
+AKI.list <- PrepSCTIntegration(object.list = AKI.list, anchor.features = features)
+AKI.anchors <- FindIntegrationAnchors(object.list = AKI.list, normalization.method = "SCT", 
+                                      anchor.features = features)
+AKI <- IntegrateData(anchorset = AKI.anchors, normalization.method = "SCT")
+DefaultAssay(AKI) <- "integrated"
+
+# clustering1
+AKI <- ScaleData(AKI, verbose = FALSE)
+AKI <- RunPCA(AKI, npcs = 30, verbose = FALSE)
+AKI <- RunUMAP(AKI, reduction = "pca", dims = 1:20)
+AKI <- FindNeighbors(AKI, reduction = "pca", dims = 1:20)
+AKI <- FindClusters(AKI, resolution = 0.4)
+DimPlot(AKI, reduction = "umap", label = TRUE)
+
+# annotation
+Idents(AKI) <- "seurat_clusters"
+new.cluster.ids <- c("TAL","PT","PT","CNT_PC","DCT","PT","FIB","ENDO2",
+                     "PT_Injured","ICA","LowQC","ICB","LEUK1","LEUK2","PODO","ENDO1","PEC","Cycling")
+names(new.cluster.ids) <- levels(AKI)
+AKI <- RenameIdents(AKI, new.cluster.ids)
+levels(AKI) <- c("PT","PT_Injured","PEC","TAL","DCT","CNT_PC","ICA","ICB","PODO",
+                 "ENDO1","ENDO2","FIB","LEUK1","LEUK2","Cycling","LowQC")
+#LowQC cluster does not have specific markers, and they enrich mitochondrial genes
+
+#Remove LowQC & doublets (Amulet) from AKI dataset
+AKI <- subset(AKI,idents = "LowQC",invert=T) 
+Idents(AKI) <- "doubletdata"
+AKI <- subset(AKI,idents = "Singlet")
+
+DefaultAssay(AKI) <- "integrated"
+
+# clustering2
+AKI <- ScaleData(AKI, verbose = FALSE)
+AKI <- RunPCA(AKI, npcs = 30, verbose = FALSE)
+AKI <- RunUMAP(AKI, reduction = "pca", dims = 1:20)
+AKI <- FindNeighbors(AKI, reduction = "pca", dims = 1:20)
+AKI <- FindClusters(AKI, resolution = 0.4)
+DimPlot(AKI, reduction = "umap", label = TRUE)
+
+#annotation
+Idents(AKI) <- "seurat_clusters"
+new.cluster.ids <- c("PT","TAL","PT","DCT","CNT_PC","PT","FIB2","ENDO2",
+                     "PT_Injured","ICA","ICB","LYMP","MAC","PEC","ENDO1","PODO","Cycling","FIB1")
+names(new.cluster.ids) <- levels(AKI)
+AKI <- RenameIdents(AKI, new.cluster.ids)
+levels(AKI) <- c("PT","PT_Injured","PEC","TAL","DCT","CNT_PC","ICA","ICB","PODO",
+                 "ENDO1","ENDO2","FIB1","FIB2","LYMP","MAC","Cycling")
+AKI@meta.data[["celltype"]] <- AKI@active.ident
+
+#control aggregated dataset (n=5) was prepared previously
+#https://github.com/TheHumphreysLab/Multimodal_analysis_ADPKD/blob/main/1_RNA_individual_data.R
+
+cont <- readRDS("control_aggregated_dataset.rds")
+cont@meta.data[["celltype"]] <- paste("Cont",cont@active.ident,sep = "-")
+AKI@meta.data[["celltype"]] <- paste("AKI",AKI@active.ident,sep = "-")
+
+#merging ADPKD and control data
+rnaAggr <- merge(AKI,cont,add.cell.ids = c("AKI","Cont"))
+rnaAggr@meta.data <- rnaAggr@meta.data[,c(1:6,21)]
+Idents(rnaAggr) <- "orig.ident"
+
+current.ids<-c("AKI1","AKI2","AKI3","AKI4","control1","control2","control3","control4","control5")
+new.ids<-c('male','female','female','male','male','male','female','male','female')
+rnaAggr@meta.data$gender <-plyr::mapvalues(rnaAggr@meta.data$orig.ident,from = current.ids,to=new.ids)
+
+current.ids<-c("AKI1","AKI2","AKI3","AKI4","control1","control2","control3","control4","control5")
+new.ids<-c('AKI','AKI','AKI','AKI','control','control','control','control','control')
+rnaAggr@meta.data$disease <-plyr::mapvalues(rnaAggr@meta.data$orig.ident,from = current.ids,to=new.ids)
+
+#Integration with Harmony on assay "RNA"
+DefaultAssay(rnaAggr) <- "RNA"
+rnaAggr <- NormalizeData(rnaAggr)
+rnaAggr <- FindVariableFeatures(rnaAggr, selection.method = "vst", nfeatures = 3000)
+rnaAggr <- ScaleData(rnaAggr, verbose = FALSE)
+rnaAggr <- RunPCA(rnaAggr, verbose = FALSE)
+rnaAggr <- RunHarmony(rnaAggr,group.by.vars = "orig.ident")
+rnaAggr <- RunUMAP(rnaAggr, reduction = "harmony", dims = 1:20)
+rnaAggr <- FindNeighbors(rnaAggr, reduction = "harmony", dims = 1:20)
+rnaAggr <- FindClusters(rnaAggr, resolution = 0.5)
+
+#Annotation
+Idents(rnaAggr) <- "seurat_clusters"
+new.cluster.ids <- c("PT","TAL2","DCT","CNT_PC","TAL1","ENDO","FIB","iPT","ICA","ICB","PEC","LEUK","PODO","PT")
+names(new.cluster.ids) <- levels(rnaAggr)
+rnaAggr <- RenameIdents(rnaAggr, new.cluster.ids)
+levels(rnaAggr) <- c("PT","iPT","PEC","TAL1","TAL2","DCT","CNT_PC","ICA","ICB","PODO","ENDO","FIB","LEUK")
+rnaAggr@meta.data[["celltype_all"]] <- rnaAggr@active.ident

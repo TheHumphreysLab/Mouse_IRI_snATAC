@@ -109,3 +109,7 @@ names(new.cluster.ids) <- levels(rnaAggr)
 rnaAggr <- RenameIdents(rnaAggr, new.cluster.ids)
 levels(rnaAggr) <- c("PT","iPT","PEC","TAL1","TAL2","DCT","CNT_PC","ICA","ICB","PODO","ENDO","FIB","LEUK")
 rnaAggr@meta.data[["celltype_all"]] <- rnaAggr@active.ident
+
+#sessionInfo()
+#[1] dplyr_1.0.5        harmony_0.1.0      Rcpp_1.0.8.3       sctransform_0.3.2
+#[5] ggplot2_3.3.3      SeuratObject_4.0.0 Seurat_4.0.0

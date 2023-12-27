@@ -1,0 +1,233 @@
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(EnsDb.Hsapiens.v86)
+library(ggplot2)
+library(tibble)
+library(dplyr)
+library(harmony)
+set.seed(1234)
+
+# load aggregated snATACseq data obtained with CellrangerATACv2.0 and create a seurat object
+counts <- Read10X_h5("filtered_peak_bc_matrix.h5")
+metadata <- read.csv("singlecell.csv", header = TRUE, row.names = 1)
+aggcsv <- read.csv("aggregation_csv.csv",header = TRUE, row.names = 1)
+
+chrom_assay <- CreateChromatinAssay(
+  counts = counts,
+  sep = c(":", "-"),
+  fragments = "/home/scratch/yoshi/ContAKIaggr/outs/fragments.tsv.gz",
+  min.cells = 5,
+  min.features = 200
+)
+
+atacAggr <- CreateSeuratObject(
+  counts = chrom_assay,
+  assay = "peaks",
+  meta.data = metadata
+)
+
+# Add the metadata
+gemgroup <- sapply(strsplit(rownames(atacAggr@meta.data), split="-"), "[[", 2) 
+current.gemgroups <- seq(length(rownames(aggcsv))) # no. gemgroups is no. samples
+orig.ident <- c("cont-1","cont-2","cont-3","cont-4","cont-5","AKI-1","AKI-2","AKI-3","AKI-4")
+sampleID <- plyr::mapvalues(gemgroup, from = current.gemgroups, to = orig.ident)
+atacAggr <- AddMetaData(object=atacAggr, metadata=data.frame(orig.ident=sampleID, row.names=rownames(atacAggr@meta.data)))
+
+Idents(atacAggr) <- "orig.ident"
+levels(atacAggr) <- c("cont-1","cont-2","cont-3","cont-4","cont-5","AKI-1","AKI-2","AKI-3","AKI-4")
+
+origident <- c("control","control","control","control","control",
+               "AKI","AKI","AKI","AKI")
+
+names(origident) <- levels(atacAggr)
+atacAggr <- RenameIdents(atacAggr, origident)
+atacAggr[["disease"]] <- Idents(atacAggr)
+
+# extract gene annotations from EnsDb
+annotations <- GetGRangesFromEnsDb(ensdb = EnsDb.Hsapiens.v86)
+seqlevelsStyle(annotations) <- 'UCSC'
+genome(annotations) <- "hg38"
+
+# add the genome information to the object
+Annotation(atacAggr) <- annotations
+
+# compute nucleosome signal score per cell
+atacAggr <- NucleosomeSignal(object = atacAggr)
+
+# compute TSS enrichment score per cell
+atacAggr <- TSSEnrichment(object = atacAggr, fast = T)
+
+# add blacklist ratio and fraction of reads in peaks
+atacAggr$pct_reads_in_peaks <- atacAggr$peak_region_fragments / atacAggr$passed_filters * 100
+
+atacAggr$blacklist_fraction <- FractionCountsInRegion(
+  object = atacAggr, 
+  assay = 'peaks',
+  regions = blacklist_hg38
+)
+
+#Doublet marking with Amulet; multiplet.rds is the multiplet list generated with Amulet
+multiplet <- readRDS("atacAKI_multiplet.rds")
+Multiplet_list <- intersect(multiplet$V1,colnames(atacAggr))
+Singlet_list <- setdiff(colnames(atacAggr),multiplet$V1)
+amulet_singlet <- as.data.frame(c(rep("Singlet", times = 74908)))
+rownames(amulet_singlet) <- c(Singlet_list)
+colnames(amulet_singlet) <- "amulet"
+amulet_multiplet <- as.data.frame(c(rep("Multiplet", times = 7364)))
+rownames(amulet_multiplet) <- c(Multiplet_list)
+colnames(amulet_multiplet) <- "amulet"
+amuletdata <- rbind(amulet_singlet,amulet_multiplet)
+atacAggr <- AddMetaData(atacAggr,amuletdata)
+
+# filter the aggregated snATACseq object using empirically-determined QC parameters
+atacAggr <- subset(x = atacAggr,
+  subset = peak_region_fragments > 2500 &
+    peak_region_fragments < 25000 &
+    pct_reads_in_peaks > 15 &
+    blacklist_fraction < 0.1 &
+    nucleosome_signal < 4 &
+    TSS.enrichment > 2
+) 
+
+#Generate gene activity matrix
+gene.activities <- GeneActivity(atacAggr)
+atacAggr[['RNA']] <- CreateAssayObject(counts = gene.activities)
+atacAggr <- NormalizeData(
+  object = atacAggr,
+  assay = 'RNA',
+  normalization.method = 'LogNormalize',
+  scale.factor = median(atacAggr$nCount_RNA)
+)
+
+#clustering
+DefaultAssay(atacAggr) <- "peaks"
+atacAggr <- RunTFIDF(atacAggr)
+atacAggr <- FindTopFeatures(atacAggr, min.cutoff = 'q0')
+atacAggr <- RunSVD(object = atacAggr)
+atacAggr <- RunHarmony(
+  object = atacAggr,
+  group.by.vars = 'orig.ident',
+  reduction = 'lsi',
+  assay.use = 'peaks',
+  project.dim = FALSE
+)
+atacAggr <- RunUMAP(atacAggr, dims = 2:30, reduction = 'harmony')
+atacAggr <- FindNeighbors(object = atacAggr, reduction = "harmony", dims = 2:30)
+atacAggr <- FindClusters(object = atacAggr, verbose = FALSE, algorithm = 3,resolution = 0.6)
+
+
+#rnaAggr : Aggreggated snRNA-seq dataset for AKI + controls (Preprocessing_HumanAKI_snRNA-seq_step1/2)
+lowres.cluster.ids <- c("PT","PT","PEC","TAL","TAL","DCT","CNT_PC","ICA","ICB","PODO","ENDO","FIB","LEUK")
+names(lowres.cluster.ids) <- levels(rnaAggr)
+rnaAggr <- RenameIdents(rnaAggr, lowres.cluster.ids)
+rnaAggr[["lowres.celltype"]] <- Idents(rnaAggr)
+
+#Label transfer (Seurat) and celltype prediction for snATAC-seq data
+DefaultAssay(atacAggr) <- "RNA"
+transfer_anchors <- FindTransferAnchors(reference = rnaAggr, query = atacAggr, features = VariableFeatures(object = rnaAggr), 
+                                        reference.assay = "RNA", query.assay = "RNA", reduction = "cca")
+
+celltype.predictions_highres <- TransferData(anchorset = transfer_anchors, refdata = rnaAggr$celltype_all, 
+                                             weight.reduction = atacAggr[["lsi"]], dims = 2:30)
+
+celltype.predictions_lowres <- TransferData(anchorset = transfer_anchors, refdata = rnaAggr$lowres.celltype, 
+                                            weight.reduction = atacAggr[["lsi"]], dims = 2:30)
+
+predictions <- cbind(celltype.predictions_highres[,c(1,15)],celltype.predictions_lowres[,c(1,13)])
+colnames(predictions) <- c("highres_predicted.id","highres_prediction.score.max",
+                           "lowres_predicted.id","lowres_prediction.score.max")
+atacAggr <- AddMetaData(atacAggr,predictions)
+
+atacAggr <- subset(atacAggr,subset = lowres_prediction.score.max > 0.5) 
+#Fitering nuclei with low-prediction scores (< 0.5)
+
+#clustering
+atacAggr <- RunTFIDF(atacAggr)
+atacAggr <- FindTopFeatures(atacAggr, min.cutoff = 'q0')
+atacAggr <- RunSVD(
+  object = atacAggr
+)
+atacAggr <- RunHarmony(
+  object = atacAggr,
+  group.by.vars = 'orig.ident',
+  reduction = 'lsi',
+  assay.use = 'peaks',
+  project.dim = FALSE
+)
+atacAggr <- RunUMAP(atacAggr, dims = 2:30, reduction = 'harmony')
+atacAggr <- FindNeighbors(object = atacAggr, reduction = "harmony", dims = 2:30)
+atacAggr <- FindClusters(object = atacAggr, verbose = FALSE, algorithm = 3,resolution = 0.3)
+
+Idents(atacAggr) <- "seurat_clusters"
+new.cluster.ids <- c("PT","TAL1","PT","PC","DCT","TAL2","PT","ENDO","FIB","ICA",
+                     "TAL3","ICB","Tcell","Myel","Bcell","PEC","PODO")
+names(new.cluster.ids) <- levels(atacAggr)
+atacAggr <- RenameIdents(atacAggr, new.cluster.ids)
+levels(atacAggr) <- c("PT","PEC","TAL1","TAL2","TAL3","DCT","PC","ICA",
+                      "ICB","PODO","ENDO","FIB","Myel","Tcell","Bcell")
+
+atacAggr[["celltype"]] <- Idents(atacAggr)
+
+DimPlot(atacAggr,label = T)
+
+features <- c("SLC34A1","LRP2","SLC5A2","SLC5A1","HAVCR1","CFH",
+              "SLC12A1","SLC12A3","SLC8A1","AQP2","SLC26A7",
+              "SLC26A4","NPHS2","EMCN","ACTA2","CSF1R","CSF2RA",
+              "CD247","CD96","CD28","PAX5","MS4A1")
+DefaultAssay(atacAggr) <- "RNA"
+
+levels(atacAggr) <- rev(levels(atacAggr))
+FigS13B <- DotPlot(atacAggr, features = features, cols = c("lightyellow","darkred")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #FigS13B dotplot
+ levels(atacAggr) <- rev(levels(atacAggr))
+
+########### motif enrichment analysis ######################################
+library(JASPAR2022)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(patchwork)
+
+DefaultAssay(atacAggr) <- 'peaks'
+gr <- granges(atacAggr)
+seq_keep <- seqnames(gr) %in% seqnames(BSgenome.Hsapiens.UCSC.hg38) 
+seq_keep <- as.vector(seq_keep)
+feat.keep <- GRangesToString(grange = gr[seq_keep])
+atac_chrom <- subset(atacAggr, features = feat.keep)
+
+# Get a list of motif position frequency matrices from the JASPAR database
+pfm <- getMatrixSet(
+  x = JASPAR2022,
+  opts = list(collection = "CORE", tax_group = 'vertebrates', all_versions = F)
+)
+
+# add motif information
+atac_chrom <- AddMotifs(
+  object = atac_chrom,
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  pfm = pfm
+)
+
+
+atac_chrom <- RunChromVAR(
+  object = atac_chrom,
+  genome = BSgenome.Hsapiens.UCSC.hg38
+)
+
+atacAggr@assays[["chromvar"]] <- atac_chrom@assays[["chromvar"]]
+
+#sessionInfo()
+#R version 4.1.0 (2021-05-18)
+#Platform: x86_64-pc-linux-gnu (64-bit)
+#Running under: Ubuntu 20.04.2 LTS
+
+#attached base packages:
+#  [1] stats4    parallel  stats     graphics  grDevices utils     datasets  methods   base     
+
+#other attached packages:
+#[1] dplyr_1.0.7                tibble_3.1.6               ggplot2_3.3.5              EnsDb.Mmusculus.v79_2.99.0
+#[5] ensembldb_2.16.4           AnnotationFilter_1.16.0    GenomicFeatures_1.44.2     AnnotationDbi_1.54.1      
+#[9] Biobase_2.52.0             GenomicRanges_1.44.0       harmony_0.1.0              Rcpp_1.0.7                
+#[13] GenomeInfoDb_1.30.0        IRanges_2.26.0             S4Vectors_0.30.2           BiocGenerics_0.38.0       
+#[17] Signac_1.4.0               SeuratObject_4.0.1         Seurat_4.0.2              

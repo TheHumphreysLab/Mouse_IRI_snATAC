@@ -2,7 +2,7 @@
 __Yoshiharu Muto, Eryn E. Dixon, Yasuhiro Yoshimura, Nicolas Ledru, Haojia Wu and Benjamin D. Humphreys__  
 
 Welcome to our GitHub repository!  
-Here you will find preprocessing scripts for our project where we integrate paired snRNAseq and snATACseq from mouse kidneys with ischemia-reperfusion injury along time course. Please contact the corresponding author, Dr. Benjamin Humphreys, with questions or comments.  
+Here you will find preprocessing scripts for our project where we analyzed snATACseq data for the mouse kidneys with ischemia-reperfusion injury along time course. Please contact the corresponding author, Dr. Benjamin Humphreys, with questions or comments.  
 <br/>
 Thanks,  
 Benjamin D. Humphreys, Yoshiharu Muto

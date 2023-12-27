@@ -18,18 +18,6 @@ Find us on Twitter:
   <a href="https://twitter.com/HumphreysLab?ref_src=twsrc%5Etfw" class="twitter-follow-button" data-show-count="false"> @HumphreysLab</a>
 <br/><br/>
 
-**preprocessing workflow**  
-
-1. Preprocessing of individual snATAC-seq data
-
-2. Identification of doublets with AMULET
-
-3. Integration of snATAC-seq data
-
-4. Label transfer from snRNA-seq data to snATAC-seq data and filtering out nuclei with low-confident prediciton 
-
-5. Integration / clustering and celltype annotation by gene activities
-
-6. Filtering out nuclei with inconsistent annotation between prediction vs gene activiies (potential remaining doublets and low-QC nuclei)
-
-7. Final integration / clustering and celltype annotation
+* snRNA-seq data for mouse IRI kidneys (whole dataset / PTC subclustering / Immune cell subclucstering) were previously published
+* Proc Natl Acad Sci U S A 2020 Jul 7;117(27):15874-15883. doi: 10.1073/pnas.2005477117
+  https://www.pnas.org/doi/abs/10.1073/pnas.2005477117

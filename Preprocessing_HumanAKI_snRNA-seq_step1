@@ -68,3 +68,7 @@ doubletdata <- AKI_1@meta.data[["DF.classifications_0.25_0.01_375"]]
 names(doubletdata) <- rownames(AKI_1@meta.data)
 doubletdata <- as.data.frame(doubletdata)
 AKI_1 <- AddMetaData(AKI_1,doubletdata)
+
+#sessionInfo()
+# dplyr_1.0.5         ggplot2_3.3.3       SeuratObject_4.0.0  Seurat_4.0.0       
+# DoubletFinder_2.0.3 SoupX_1.5.0    

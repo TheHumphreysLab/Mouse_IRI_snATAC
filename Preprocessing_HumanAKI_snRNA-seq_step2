@@ -71,6 +71,19 @@ levels(AKI) <- c("PT","PT_Injured","PEC","TAL","DCT","CNT_PC","ICA","ICB","PODO"
                  "ENDO1","ENDO2","FIB1","FIB2","LYMP","MAC","Cycling")
 AKI@meta.data[["celltype"]] <- AKI@active.ident
 
+FigS12A <- DimPlot(AKI, reduction = "umap", label = TRUE), FigS12A
+
+DefaultAssay(AKI) <- "RNA"
+levels(AKI) <- rev(levels(AKI))
+features <- c("SLC34A1","LRP2","HAVCR1","CFH","SLC12A1","SLC12A3",
+              "SLC8A1","AQP2","SLC26A7","SLC26A4","NPHS2",
+              "EMCN","HECW2","GPM6A","FLRT2","PDGFRB","PIEZO2","PDGFA","C7"
+              ,"PTPRC","CD96","THEMIS","CD163","MRC1","MKI67")
+FigS12B<- DotPlot(AKI, features = features, cols = c("lightyellow","royalblue")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #FigS12B
+levels(AKI) <- rev(levels(AKI))
+
 #control aggregated dataset (n=5) was prepared previously
 #https://github.com/TheHumphreysLab/Multimodal_analysis_ADPKD/blob/main/1_RNA_individual_data.R
 

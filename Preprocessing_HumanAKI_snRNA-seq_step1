@@ -1,0 +1,70 @@
+#Preprocessing for each individual dataset before aggregation (AKI_1/2/3/4)
+#Same preprocessing was performed on control_1/2/3/4/5 previously
+#https://github.com/TheHumphreysLab/Multimodal_analysis_ADPKD/blob/main/1_RNA_individual_data.R
+
+library(SoupX)
+library(DoubletFinder)
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+
+toc = Read10X_h5("filtered_feature_bc_matrix.h5")
+tod = Read10X_h5("raw_feature_bc_matrix.h5")
+
+AKI_1 <- CreateSeuratObject(counts = toc, min.cells = 10, 
+                            project = "RNA")
+
+AKI_1 <- NormalizeData(AKI_1)
+AKI_1 <- ScaleData(AKI_1)
+AKI_1 <- FindVariableFeatures(AKI_1, selection.method = "vst", nfeatures = 2000)
+AKI_1 <- RunPCA(AKI_1)
+AKI_1 <- FindNeighbors(AKI_1, dims = 1:20)
+AKI_1 <- FindClusters(AKI_1)
+AKI_1 <- RunUMAP(AKI_1, dims = 1:20)
+
+sc = SoupChannel(tod,toc)
+sc = setClusters(sc,setNames(AKI_1@meta.data[["seurat_clusters"]], rownames(AKI_1@meta.data)))
+sc = autoEstCont(sc,forceAccept=TRUE)
+out = adjustCounts(sc)
+
+AKI_1 <- CreateSeuratObject(counts = out, min.cells = 10, min.features = 500, project = "RNA")
+AKI_1 <- PercentageFeatureSet(AKI_1, pattern = "^MT-", col.name = "percent.mt")
+AKI_1 <- PercentageFeatureSet(AKI_1, pattern = "^RPL", col.name = "percent.rpl")
+AKI_1 <- PercentageFeatureSet(AKI_1, pattern = "^RPS", col.name = "percent.rps")
+
+#remove low-quality nuclei (nuclei with top 5% and bottom 1% in the distribution of
+#feature count or RNA count, or those with %Mitochondrial genes >0.25)
+LowQC1 <- rownames(top_frac(AKI_1@meta.data, 0.05, nFeature_RNA))
+LowQC2 <- rownames(top_frac(AKI_1@meta.data, 0.05, nCount_RNA))
+LowQC3 <- rownames(top_frac(AKI_1@meta.data, -0.01, nFeature_RNA))
+LowQC4 <- rownames(top_frac(AKI_1@meta.data, -0.01, nCount_RNA))
+LowQC <- unique(c(LowQC1,LowQC2,LowQC3,LowQC4))
+
+AKI_1 <- subset(AKI_1, cells =  LowQC,invert = T) 
+AKI_1 <- subset(AKI_1, percent.mt < 0.25)
+
+#clustering for doublet mark with DoubletFinder
+AKI_1 <- NormalizeData(AKI_1)
+AKI_1 <- ScaleData(AKI_1)
+AKI_1 <- FindVariableFeatures(AKI_1, selection.method = "vst", nfeatures = 2000)
+AKI_1 <- RunPCA(AKI_1)
+AKI_1 <- FindNeighbors(AKI_1, dims = 1:10)
+AKI_1 <- FindClusters(AKI_1)
+AKI_1 <- RunUMAP(AKI_1, dims = 1:10)
+
+## pK Identification
+sweep.res.list_kidney <- paramSweep_v3(AKI_1, PCs = 1:10, sct = F)
+sweep.stats_kidney <- summarizeSweep(sweep.res.list_kidney, GT = FALSE)
+bcmvn_kidney <- find.pK(sweep.stats_kidney)
+#determine pK for individual dataset as instructed in tutorial
+
+## Run DoubletFinder
+#Heterotypic doublet rate is set to 8%. Use pK determined above, pK=0.01 for AKI_1
+AKI_1 <- doubletFinder_v3(AKI_1, PCs = 1:10, pN = 0.25, pK = 0.01, nExp = round(0.08*length(AKI_1@active.ident)), 
+                          reuse.pANN = FALSE, sct = FALSE)
+
+## Add detected doublet to metadata of Seurat object
+doubletdata <- AKI_1@meta.data[["DF.classifications_0.25_0.01_375"]]
+names(doubletdata) <- rownames(AKI_1@meta.data)
+doubletdata <- as.data.frame(doubletdata)
+AKI_1 <- AddMetaData(AKI_1,doubletdata)

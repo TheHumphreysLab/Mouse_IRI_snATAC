@@ -1,1 +1,2 @@
 cellranger-atac count --id sham_1 --reference=/path/to/refdata-cellranger-arc-mm10-2020-A-2.0.0 --fastqs /path/to/fastq_folder
+

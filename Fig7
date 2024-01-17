@@ -71,6 +71,7 @@ Fig7A_2 <- ggpar(test,xscale = "log10",yscale = "log10")
 
 #####################################################
 #CREB5 (human data) 
+Idents(rnaAggr) <- "disease"
 aki <- subset(rnaAggr,idents = "AKI")
 Fig7B <- FeaturePlot(aki,"CREB5")
 Fig7C_creb5 <- VlnPlot(PTC,"MA0840.1",pt.size = 0)

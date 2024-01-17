@@ -26,9 +26,6 @@ PTCrna@meta.data[["celltype2"]] <- paste0(PTCrna@meta.data[["celltype_all"]],"_"
 FigS15A <- VlnPlot(PTCrna,"VCAM1",split.by = "disease")
 
 FigS16A <- FeaturePlot(rnaAggr,"CREB5",split.by = "disease") 
-Idents(rnaAggr) <- "disease"
-aki <- subset(rnaAggr,idents = "AKI")
-Fig7B <- FeaturePlot(aki,"CREB5")
 
 #VISION
 library(VISION)
@@ -46,7 +43,7 @@ Idents(PTCrna) <- "celltype2"
 levels(PTCrna) <- levels(PTCrna)[c(3,1,4,2)]
 aver_GSEA <- AverageExpression(PTCrna, assays = "GSEA")
 mat <- aver_GSEA[["GSEA"]]
-Fig7C <- pheatmap::pheatmap(mat,scale = "row",cluster_cols=F,cluster_rows = T)
+Fig6C <- pheatmap::pheatmap(mat,scale = "row",cluster_cols=F,cluster_rows = T)
 
 #ATAC part
 
@@ -118,7 +115,6 @@ Fig6D_heatmap <- pheatmap::pheatmap(aver_chromvar,scale = "row",
 Fig6D_hnf4a <- VlnPlot(PTC,"MA0114.4",pt.size = 0) 
 Fig6D_Nfe2l2 <- VlnPlot(PTC,"MA0150.2",pt.size = 0) 
 Fig6D_rela <- VlnPlot(PTC,"MA0107.1",pt.size = 0) 
-Fig7C_creb5 <- VlnPlot(PTC,"MA0840.1",pt.size = 0) 
 Fig6D_ap1 <- VlnPlot(PTC,"MA0099.3",pt.size = 0)
 
 

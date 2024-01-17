@@ -1,0 +1,132 @@
+library(Seurat) #3.2.0
+library(ggplot2)
+library(sctransform)
+library(harmony)
+library(Rcpp)
+library(dplyr)
+library(BuenColors)
+library(openxlsx)
+set.seed(1234)
+
+#RNA part
+rnaAggr <- readRDS("AKIContAggr.rds")
+DimPlot(rnaAggr,label = T)
+
+DefaultAssay(rnaAggr) <- "RNA"
+levels(rnaAggr) <- rev(levels(rnaAggr))
+features <- c("SLC34A1","LRP2","HAVCR1","CFH","CLDN16","SLC12A1","SLC12A3",
+              "SLC8A1","AQP2","SLC26A7","SLC26A4","NPHS2","EMCN","PDGFRB","PTPRC")
+FigS12A <- DotPlot(rnaAggr, features = features, cols = c("lightyellow","royalblue")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+levels(rnaAggr) <- rev(levels(rnaAggr))
+
+PTCrna <- subset(rnaAggr,idents = c("PT","iPT"))
+PTCrna@meta.data[["celltype2"]] <- paste0(PTCrna@meta.data[["celltype_all"]],"_",PTCrna@meta.data[["disease"]])
+FigS15A <- VlnPlot(PTCrna,"VCAM1",split.by = "disease")
+
+FigS16A <- FeaturePlot(rnaAggr,"CREB5",split.by = "disease") 
+Idents(rnaAggr) <- "disease"
+aki <- subset(rnaAggr,idents = "AKI")
+Fig7B <- FeaturePlot(aki,"CREB5")
+
+#VISION
+library(VISION)
+signatures <- "h.all.v6.2.symbols.gmt"
+vision.obj <- Vision(PTCrna, signatures = signatures)
+options(mc.cores=24)
+vision.obj <- analyze(vision.obj)
+
+sigScores <- getSignatureScores(vision.obj)
+sigScores <- as.data.frame(sigScores)
+PTCrna[['GSEA']] <- CreateAssayObject(counts = t(sigScores))
+DefaultAssay(PTCrna) <- "GSEA"
+PTCrna <- ScaleData(PTCrna)
+Idents(PTCrna) <- "celltype2"
+levels(PTCrna) <- levels(PTCrna)[c(3,1,4,2)]
+aver_GSEA <- AverageExpression(PTCrna, assays = "GSEA")
+mat <- aver_GSEA[["GSEA"]]
+Fig7C <- pheatmap::pheatmap(mat,scale = "row",cluster_cols=F,cluster_rows = T)
+
+#ATAC part
+
+library(Signac)
+library(GenomeInfoDb)
+library(EnsDb.Hsapiens.v86)
+library(tibble)
+library(JASPAR2022)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(patchwork)
+set.seed(1234)
+
+atacAggr <- readRDS("AKIContAggrATAC.rds")
+features <- c("SLC34A1","LRP2","SLC5A2","SLC5A1","HAVCR1","CFH",
+              "SLC12A1","SLC12A3","SLC8A1","AQP2","SLC26A7",
+              "SLC26A4","NPHS2","EMCN","ACTA2","CSF1R","CSF2RA","MRC1","PAX5","MS4A1","CD247","CD96")
+DefaultAssay(atacAggr) <- "RNA"
+
+levels(atacAggr) <- rev(levels(atacAggr))
+FigS12B <- DotPlot(atacAggr, features = features, cols = c("lightyellow","darkred")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+levels(atacAggr) <- rev(levels(atacAggr))
+
+PTC <- subset(atacAggr,idents = c("PCT","PST","iPT"))
+new.cluster.ids <- c("PCT","PST","iPT")
+names(new.cluster.ids) <- levels(PTC)
+PTC <- RenameIdents(PTC, new.cluster.ids)
+PTC@meta.data[["subtype"]] <- PTC@active.ident
+PTC@meta.data[["subtype_disease"]] <- paste0(PTC@meta.data[["subtype"]],"_",PTC@meta.data[["disease"]])
+Idents(PTC) <- "subtype_disease"
+levels(PTC) <- c("PCT_control","PCT_AKI","PST_control","PST_AKI","iPT_control","iPT_AKI")
+DefaultAssay(PTC) <- "chromvar"
+
+# Get a list of motif position frequency matrices from the JASPAR database
+pfm <- getMatrixSet(
+  x = JASPAR2022,
+  opts = list(collection = "CORE", tax_group = 'vertebrates', all_versions = F)
+)
+
+marker <- FindAllMarkers(PTC,
+                         mean.fxn = rowMeans,
+                         fc.name = "avg_diff",
+                         only.pos = T)
+
+
+unique_tf.list <- unique(marker$gene)
+
+PTC <- ScaleData(PTC)
+PTC[['chromvar']]@scale.data <- PTC[['chromvar']]@data 
+
+aver_chromvar <- AverageExpression(PTC, assays = "chromvar", features = unique_tf.list,slot = "scale.data") %>%
+  as.data.frame()
+
+# sort the heatmap prior to plotting find column index for maxium value for each TF activity
+aver_chromvar <- aver_chromvar[do.call(order, c(aver_chromvar, list(decreasing=TRUE))),]
+aver_chromvar$max <- max.col(aver_chromvar)
+aver_chromvar <- aver_chromvar[order(aver_chromvar$max), ]
+aver_chromvar <- dplyr::select(aver_chromvar, -max)
+colnames(aver_chromvar) <- levels(Idents(PTC))
+
+# visualize heatmap
+Fig6D_heatmap <- pheatmap::pheatmap(aver_chromvar,scale = "row",
+                                    cluster_cols=F,cluster_rows = F,
+                                    color = jdb_palette("brewer_yes"),
+                                    show_rownames=F) 
+
+Fig6D_hnf4a <- VlnPlot(PTC,"MA0114.4",pt.size = 0) 
+Fig6D_Nfe2l2 <- VlnPlot(PTC,"MA0150.2",pt.size = 0) 
+Fig6D_rela <- VlnPlot(PTC,"MA0107.1",pt.size = 0) 
+Fig7C_creb5 <- VlnPlot(PTC,"MA0840.1",pt.size = 0) 
+Fig6D_ap1 <- VlnPlot(PTC,"MA0099.3",pt.size = 0)
+
+
+FigS15B <- CoveragePlot(
+  object = PTC,
+  region = "VCAM1",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 2000,
+  extend.downstream = 2000,
+) 

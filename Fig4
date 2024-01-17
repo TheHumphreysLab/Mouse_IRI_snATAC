@@ -1,0 +1,103 @@
+library(Signac) 
+library(Seurat) 
+library(GenomeInfoDb)
+library(harmony) 
+library(EnsDb.Mmusculus.v79)
+library(ggplot2)
+library(tibble)
+library(dplyr)
+library(harmony)
+library(BuenColors)
+library(openxlsx) 
+library(monocle3)
+library(cicero)
+set.seed(1234)
+
+PTC <- readRDS("PTC_final.rds")
+DefaultAssay(PTC) <- "peaks"
+  
+FRPTC <- subset(PTC,idents = "Failed_repair_PTC")
+
+#CCAN
+DefaultAssay(FRPTC) <- "peaks"
+
+count_data <- GetAssayData(FRPTC, slot = "counts")
+summ <- summary(count_data)
+summ_frame <- data.frame(peak = rownames(count_data)[summ$i],
+                         cell.id = colnames(count_data)[summ$j],
+                         count = summ$x)
+
+# create cell data set object with cicero constructor
+input_cds <- make_atac_cds(summ_frame, binarize = F)
+meta <- FRPTC@meta.data
+meta$cells <- rownames(meta)
+metanames <- rownames(meta)
+meta <- merge(input_cds@colData,meta,by.x="cells", by.y="cells")
+rownames(meta) <- meta@listData[["cells"]]
+input_cds@colData <- meta
+input_cds <- detect_genes(input_cds)
+input_cds <- estimate_size_factors(input_cds)
+input_cds <- preprocess_cds(input_cds, method = "LSI")
+input_cds <- reduce_dimension(input_cds, reduction_method = 'UMAP', 
+                              preprocess_method = "LSI")
+umap_coords <- reducedDims(input_cds)$UMAP
+cicero_cds <- make_cicero_cds(input_cds, reduced_coordinates = umap_coords)
+
+#http://ftp.ensembl.org/pub/release-100/gtf/mus_musculus/Mus_musculus.GRCm38.100.gtf.gz
+
+gene_anno <- rtracklayer::readGFF("Mus_musculus.GRCm38.100.gtf")
+
+# rename some columns to match plotting requirements
+gene_anno$chromosome <- paste0("chr", gene_anno$seqid)
+gene_anno$gene <- gene_anno$gene_id
+gene_anno$transcript <- gene_anno$transcript_id
+gene_anno$symbol <- gene_anno$gene_name
+
+#ch11 (Ccl2)
+contigs <- read.table("mm10.chrom.sizes.txt")
+contigs <- subset(contigs, V1 %in% "chr11")
+conns <- run_cicero(cicero_cds, contigs)
+Fig4A <- plot_connections(conns, "chr11",82010000,82050000,
+                 gene_model = gene_anno,
+                 coaccess_cutoff = .2, 
+                 connection_width = .5, 
+                 collapseTranscripts = "longest",
+                 viewpoint = "chr11-82032734-82033526") 
+
+Fig4A_coverplot <- CoveragePlot(PTC,"chr11-82010000-82050000",annotation = T,peaks = F,
+                               extend.upstream = 0,extend.downstream = 0)
+
+#chr3 (Csf1)
+contigs <- read.table("mm10.chrom.sizes.txt")
+contigs <- subset(contigs, V1 %in% "chr3")
+conns <- run_cicero(cicero_cds, contigs)
+Fig4D <- plot_connections(conns, "chr3",107730000,107790000,
+                          
+                          gene_model = gene_anno,
+                          coaccess_cutoff = .2, 
+                          connection_width = .5, 
+                          collapseTranscripts = "longest",
+                          viewpoint = "chr3-107775891-107776242") 
+
+Fig4D_coverplot <- CoveragePlot(PTC,"chr3-107730000-107790000",annotation = T,peaks = F,
+                                extend.upstream = 0,extend.downstream = 0)
+
+#ch16 (Cd47)
+contigs <- read.table("mm10.chrom.sizes.txt")
+contigs <- subset(contigs, V1 %in% "chr16")
+conns <- run_cicero(cicero_cds, contigs)
+Fig4E <- plot_connections(conns, "chr16",49750000,50050000,
+                 gene_model = gene_anno,
+                 coaccess_cutoff = .2, 
+                 connection_width = .5, 
+                 collapseTranscripts = "longest",
+                 viewpoint = "chr16-49970506-49971086") 
+
+Fig4E_coverplot <- CoveragePlot(PTC,"chr16-49750000-50050000",annotation = T,peaks = F,
+                               extend.upstream = 0,extend.downstream = 0) 
+
+PTCrna <- readRDS("IRI_PT_mod.rds")
+Fig4C_Ccl2 <- FeaturePlot(PTCrna,"Ccl2",order=T)
+Fig4C_Cd47 <- FeaturePlot(PTCrna,"Cd47",order=T)
+Fig4C_Csf1 <- FeaturePlot(PTCrna,"Csf1",order=T) #500x400
+

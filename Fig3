@@ -1,0 +1,39 @@
+library(ggpubr)
+library(BuenColors)
+
+data1 <- read.csv("rela_intersect_GO_TSS2000.csv")
+
+Fig3B <- ggbarplot(data1, x = "GO.cellular.component.complete", y = "Enrichment",
+                   fill = "Pval",  
+                   fill_palette = c("red","blue"),
+                   sort.val = "asc",         
+                   sort.by.groups = FALSE,     
+                   x.text.angle = 90, 
+                   rotate = TRUE,
+                   lab.size = 20,
+                   ggtheme = theme_minimal() 
+)
+data2 <- read.csv("mFRPTC_rela_intersect_GO.csv")
+
+Fig3E <- ggbarplot(data2, x = "GO.molecular.function.complete", y = "Enrichment",
+          fill = "Pval",  
+          sort.val = "asc",          
+          sort.by.groups = FALSE,     
+          x.text.angle = 90, 
+          rotate = TRUE,
+          lab.size = 20,
+          ggtheme = theme_minimal()
+)
+
+library(ChIPseeker)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(org.Hs.eg.db)
+
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+peakAnno <- annotatePeak("rela_intersect.bed", tssRegion=c(-2000, 2000),
+                         TxDb=txdb, annoDb="org.Hs.eg.db")
+
+Fig3C <- plotAnnoPie(peakAnno)
+
+test <- as.data.frame(peakAnno@anno)
+write.csv(test,"rela_intersect.anno.csv")

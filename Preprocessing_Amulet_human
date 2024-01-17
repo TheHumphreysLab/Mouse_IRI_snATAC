@@ -1,0 +1,15 @@
+#!/bin/bash
+
+samples=$(ls /home/scratch/yoshi/ | grep "[0-9][0-9]*.*")
+
+# mkdir -p "amulet_output"
+
+for lib in $samples; do
+    echo "running sample $lib"
+    # rm $lib/outs/possorted_bam.bam $lib/outs/possorted_bam.bam.bai
+    mkdir -p "amulet_output/"$lib
+    input_frag=$lib"/outs/fragments.tsv.gz"
+    input_sc_csv=$lib"/outs/singlecell.csv"
+    AMULET/AMULET.sh $input_frag $input_sc_csv AMULET/human_autosomes.txt AMULET/hg38-blacklist.v2.bed "amulet_output/"$lib AMULET &
+    echo "completed "$lib
+done

@@ -7,7 +7,7 @@ Here you will find preprocessing scripts for our project where we analyzed snATA
 Thanks,  
 Benjamin D. Humphreys, Yoshiharu Muto
 
-This work is posted on the following [manuscript](https://www.biorxiv.org/content/10.1101/2024.01.20.576421v2)
+This work is on the following [manuscript](https://www.biorxiv.org/content/10.1101/2024.01.20.576421v2)
 ```
 Epigenetic reprogramming driving successful and failed repair in acute kidney injury
 Yoshiharu Muto, Eryn E. Dixon, Yasuhiro Yoshimura, Haojia Wu, Nicolas Ledru, Yuhei Kirita and Benjamin D. Humphreys

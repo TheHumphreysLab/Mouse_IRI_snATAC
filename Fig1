@@ -1,0 +1,181 @@
+library(Signac) 
+library(Seurat)
+library(GenomeInfoDb)
+library(EnsDb.Mmusculus.v79)
+library(ggplot2)
+library(tibble)
+library(dplyr)
+library(harmony)
+set.seed(1234)
+
+atacAggr <- readRDS("atacAggrIRI_final.rds")
+rnaAggr <- readRDS("IRI_RNA.rds")
+
+fig1B_1 <- DimPlot(rnaAggr)+NoLegend() 
+
+DefaultAssay(atacAggr) <- "RNA"
+rnaAggr <- readRDS("IRI_RNA.rds")
+
+Fig1B_2 <- DimPlot(atacAggr)+NoLegend() 
+
+Idents(atacAggr) <- "lowres_predicted.id"
+Fig1B_3 <- DimPlot(atacAggr)+NoLegend() 
+
+Fig1C_slc5a12 <- CoveragePlot(
+  object = atacAggr,
+  region = "chr2-110596250-110598250",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig1C_slc7a13 <- CoveragePlot(
+  object = atacAggr,
+  region = "chr4-19818000-19820000",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig1C_bst1 <- CoveragePlot(
+  object = atacAggr,
+  region = "chr5-43818000-43820000",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig1C_Slc12a1 <- CoveragePlot(
+  object = atacAggr,
+  region = "chr2-125151500-125153500",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig1C_Slc12a3 <- CoveragePlot(
+  object = atacAggr,
+  region = "chr8-94328250-94330250",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig1C_trpv5 <- CoveragePlot(
+  object = atacAggr,
+  region = "chr6-41680000-41682000",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig1C_aqp2 <- CoveragePlot(
+  object = atacAggr,
+  region = "chr15-99578000-99580000",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig1C_kit <- CoveragePlot(
+  object = atacAggr,
+  region = "chr5-75574000-75576000",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig1C_nphs2 <- CoveragePlot(
+  object = atacAggr,
+  region = "chr1-156309700-156311700",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig1C_Wnt16 <- CoveragePlot(
+  object = atacAggr,
+  region = "chr6-22287250-22289250",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig1C_Psapl1 <- CoveragePlot(
+  object = atacAggr,
+  region = "chr5-36203250-36205250",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+
+Fig1C_emcn <- CoveragePlot(
+  object = atacAggr,
+  region = "chr3-137340000-137342000",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig1C_col3a1 <- CoveragePlot(
+  object = atacAggr,
+  region = "chr1-45310100-45312100",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig1C_myl9 <- CoveragePlot(
+  object = atacAggr,
+  region = "chr2-156774000-156776000",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+
+Fig1C_mrc1 <- CoveragePlot(
+  object = atacAggr,
+  region = "chr2-14228000-14230000",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig1C_themis <- CoveragePlot(
+  object = atacAggr,
+  region = "chr10-28667500-28669500",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+features <- c("Slc5a12","Slc34a1","Acsm1","Lrp2","Slc7a13","Mep1b",
+              "Epha7","Slc14a2","Cldn16","Slc12a1","Umod","Slc12a3",
+              "Slc8a1","Scnn1b","Aqp2","Kit","Slc26a4","Wt1","Nphs1",
+              "Ncam1","Upk1b","Flt1","Pecam1","Pdgfrb","Acta2","Ptprc","Cd86","Themis")
+
+DefaultAssay(atacAggr) <- "RNA"
+
+levels(atacAggr) <- rev(levels(atacAggr))
+FigS2 <- DotPlot(atacAggr, features = features, cols = c("lightyellow","darkred")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #1000x600
+levels(atacAggr) <- rev(levels(atacAggr))

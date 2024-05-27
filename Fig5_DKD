@@ -1,1 +1,153 @@
+library(Seurat) #3.2.0
+library(ggplot2)
+library(sctransform)
+library(harmony)
+library(Rcpp)
+library(dplyr)
+library(BuenColors)
+library(openxlsx)
+set.seed(1234)
 
+rnaAggr <- readRDS("AKIContAggr.rds")
+dnAggr <- readRDS("DKD_ContAggr.rds") #snRNA-seq: Nat Commun. 2022 Sep 6;13(1):5253 / PMID: 36068241
+
+#DN
+Idents(dnAggr) <- "orig.ident"
+new.cluster.ids <- c("cont1_chem5","cont2_chem5","cont3_chem5","cont4_chem5","cont5_chem5",
+                     "DN1_chem5","DN2_chem5","DN3_chem5","DN4_chem5","DN5_chem5","cont6_chem3")
+names(new.cluster.ids) <- levels(dnAggr)
+dnAggr <- RenameIdents(dnAggr, new.cluster.ids)
+dnAggr@meta.data[["orig.ident2"]] <- dnAggr@active.ident
+
+Idents(dnAggr) <- "orig.ident"
+new.cluster.ids <- c("cont_chem5","cont_chem5","cont_chem5","cont_chem5","cont_chem5",
+                     "DN_chem5","DN_chem5","DN_chem5","DN_chem5","DN_chem5","cont_chem3")
+names(new.cluster.ids) <- levels(dnAggr)
+dnAggr <- RenameIdents(dnAggr, new.cluster.ids)
+dnAggr@meta.data[["disease"]] <- dnAggr@active.ident
+
+Idents(dnAggr) <- "orig.ident"
+new.cluster.ids <- c("cont","cont","cont","cont","cont",
+                     "DN","DN","DN","DN","DN","cont")
+names(new.cluster.ids) <- levels(dnAggr)
+dnAggr <- RenameIdents(dnAggr, new.cluster.ids)
+dnAggr@meta.data[["disease2"]] <- dnAggr@active.ident
+
+Idents(dnAggr) <- "orig.ident"
+new.cluster.ids <- c("chem5","chem5","chem5","chem5","chem5",
+                     "chem5","chem5","chem5","chem5","chem5","chem3")
+names(new.cluster.ids) <- levels(dnAggr)
+dnAggr <- RenameIdents(dnAggr, new.cluster.ids)
+dnAggr@meta.data[["chem"]] <- dnAggr@active.ident
+
+Idents(dnAggr) <- "celltype"
+DN_iPT <- subset(dnAggr,idents = "PTVCAM1")
+DN_iPT@meta.data[["celltype"]] <- "iPT"
+Idents(DN_iPT) <- "orig.ident2"
+DN_iPT <- subset(DN_iPT,idents = "cont6_chem3",invert=T) #6 has high global sclerosis
+
+#AKI
+Idents(rnaAggr) <- "orig.ident"
+new.cluster.ids <- c("AKI1_chem3","AKI2_chem3","AKI3_chem3","AKI4_chem3",
+                     "cont1_chem3","cont2_chem3","cont3_chem3","cont4_chem3","cont5_chem3")
+names(new.cluster.ids) <- levels(rnaAggr)
+rnaAggr <- RenameIdents(rnaAggr, new.cluster.ids)
+rnaAggr@meta.data[["orig.ident2"]] <- rnaAggr@active.ident
+
+Idents(rnaAggr) <- "orig.ident"
+new.cluster.ids <- c("AKI_chem3","AKI_chem3","AKI_chem3","AKI_chem3",
+                     "cont_chem3","cont_chem3","cont_chem3","cont_chem3","cont_chem3")
+names(new.cluster.ids) <- levels(rnaAggr)
+rnaAggr <- RenameIdents(rnaAggr, new.cluster.ids)
+rnaAggr@meta.data[["disease"]] <- rnaAggr@active.ident
+
+Idents(rnaAggr) <- "orig.ident"
+new.cluster.ids <- c("AKI","AKI","AKI","AKI",
+                     "cont","cont","cont","cont","cont")
+names(new.cluster.ids) <- levels(rnaAggr)
+rnaAggr <- RenameIdents(rnaAggr, new.cluster.ids)
+rnaAggr@meta.data[["disease2"]] <- rnaAggr@active.ident
+
+rnaAggr@meta.data[["chem"]] <- "chem3"
+
+Idents(rnaAggr) <- "celltype_all"
+AKI_iPT <- subset(rnaAggr,idents = "iPT")
+#AKI_PCT@meta.data[["celltype2"]] <-  paste0(AKI_PCT@meta.data[["celltype_all"]],"_",AKI_PCT@meta.data[["disease"]])
+
+DefaultAssay(AKI_iPT) <- "RNA"
+DefaultAssay(DN_iPT) <- "RNA"
+iPT <- merge(AKI_iPT,DN_iPT)
+iPT <- NormalizeData(iPT)
+iPT <- FindVariableFeatures(iPT, selection.method = "vst", nfeatures = 1000)
+iPT <- ScaleData(iPT, verbose = FALSE)
+iPT <- RunPCA(iPT, verbose = FALSE)
+iPT <- RunHarmony(iPT,group.by.vars = "chem")
+iPT <- RunUMAP(iPT, reduction = "harmony", dims = 1:15)
+iPT <- FindNeighbors(iPT, reduction = "harmony", dims = 1:15)
+iPT <- FindClusters(iPT, resolution = 0.1)
+new.cluster.ids <- c("Injured_iPT","FRPTC_iPT","Recoverying_iPT","PROM1_iPT")
+names(new.cluster.ids) <- levels(iPT)
+iPT <- RenameIdents(iPT, new.cluster.ids)
+iPT@meta.data[["subtype"]] <- iPT@active.ident
+
+Fig5E <- DimPlot(iPT,label=T,repel = T)+NoLegend()
+
+features <- c("HAVCR1","AJAP1","VCAM1","DCC","MKI67","TOP2A","ADGRL3","PROM1")
+
+levels(iPT) <- rev(levels(iPT))
+Fig5F <- DotPlot(iPT, features = features) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #620x360
+levels(iPT) <- rev(levels(iPT))
+
+Idents(iPT) <- "disease2"
+levels(iPT) <- c("AKI","DN","cont")
+iPT@meta.data[["disease2"]] <- iPT@active.ident
+iPT3 <- subset(iPT,downsample = 678) #AKI/DN/control are now same number 
+Idents(iPT3) <- "subtype"
+Fig5G_1 <- DimPlot(iPT3,split.by = "disease2",pt.size = 0.5)+NoLegend()
+
+#check healthy control
+Idents(iPT) <- "disease"
+iPT4 <- subset(iPT,idents = c("cont_chem3","cont_chem5")) #only healthy kidneys
+Idents(iPT4) <- "subtype"
+Fig20A <- DimPlot(iPT4,split.by = "disease",pt.size = 0.3)+NoLegend() #500x300
+
+Idents(iPT) <- "subtype"
+iPT2 <- subset(iPT,idents = c("Injured_iPT","FRPTC_iPT"))
+
+Idents(iPT2) <- "disease"
+levels(iPT2) <- c("cont_chem3","cont_chem5","AKI_chem3","DN_chem5")
+iPT2@meta.data[["disease"]] <- iPT2@active.ident
+Idents(iPT2) <- "subtype"
+
+ggplotColours <- function(n = 6, h = c(0, 360) + 15){
+  if ((diff(h) %% 360) < 1) h[2] <- h[2] - 360/n
+  hcl(h = (seq(h[1], h[2], length = n)), c = 100, l = 65)}
+colours <- ggplotColours(n=4)
+
+FigS21_C <- VlnPlot(iPT2,"CREB5",split.by = "disease",cols = colours[c(3,2,4,1)])
+#900x380
+
+iPT@meta.data[["subtype2"]] <- paste0(iPT@meta.data[["subtype"]],"-",iPT@meta.data[["disease"]])
+stat2 <- as.data.frame(table(iPT@meta.data[["subtype2"]]))
+write.csv(stat2,"~/ATAC_AKI_project/FigR/iPT_percentage.csv") #process to the percentage in the each PT population "iPT_percentage.csv" (AKI vs DKD vs control)
+
+percentage <- read.csv("~/ATAC_AKI_project/FigR/iPT_percentage.csv")
+
+#convert data frame from a "wide" format to a "long" format
+library(reshape2)
+lm = melt(percentage, id = "subtype")
+
+ggplotColours <- function(n = 6, h = c(0, 360) + 15){
+  if ((diff(h) %% 360) < 1) h[2] <- h[2] - 360/n
+  hcl(h = (seq(h[1], h[2], length = n)), c = 100, l = 65)
+}
+colours <- ggplotColours(n=4)
+
+library(ggplot2)
+Fig5G_2 <- ggplot(lm, aes(x = subtype, fill = variable, y = value)) + 
+  geom_bar(stat = "identity", colour = "black")  + 
+  scale_y_continuous(expand = c(0, 0)) +theme(
+    panel.background = element_rect(fill='transparent'))  + 
+  scale_fill_manual(values = colours) #400x360

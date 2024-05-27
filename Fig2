@@ -1,0 +1,288 @@
+library(Signac) 
+library(Seurat) 
+library(GenomeInfoDb)
+library(harmony) 
+library(EnsDb.Mmusculus.v79)
+library(ggplot2)
+library(tibble)
+library(dplyr)
+library(harmony)
+library(BuenColors)
+library(JASPAR2022)
+library(TFBSTools)
+set.seed(1234)
+
+PTC <- readRDS("PTC_final.rds")
+rnaPTC <- readRDS("IRI_PT_mod.rds") #Published in Kirita et al
+
+Fig2A <- DimPlot(PTC)+NoLegend()
+DefaultAssay(PTC) <- "peaks"
+
+Fig2B_slc5a2 <- CoveragePlot(
+  object = PTC,
+  region = "chr7-128264500-128266500",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig2B_slc34a1 <- CoveragePlot(
+  object = PTC,
+  region = "chr13-55398500-55400500",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig2B_slco4c1 <- CoveragePlot(
+  object = PTC,
+  region = "chr1-96852750-96854750",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig2B_Fgg <-  CoveragePlot(
+  object = PTC,
+  region = "chr3-83006750-83008750",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig2B_Mt2 <- CoveragePlot(
+  object = PTC,
+  region = "chr8-94171500-94173500",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig2B_Krt20  <- CoveragePlot(
+  object = PTC,
+  region = "chr11-99437250-99439250",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig2B_Gm20481 <- CoveragePlot(
+  object = PTC,
+  region = "chr17-34968000-34970000",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig2B_Vcam1 <- CoveragePlot(
+  object = PTC,
+  region = "chr3-116128500-116130500",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+
+FigS4A_1 <- DimPlot(rnaPTC)+NoLegend()
+
+features <- c("Slc5a2","Slc34a1","Slco4c1","Plin2","Havcr1","Krt20","Hspa1a","Vcam1")
+
+levels(rnaPTC) <- rev(levels(rnaPTC))
+FigS4A_2 <- DotPlot(rnaPTC, features = features, cols = c("lightyellow","darkgreen")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+levels(rnaPTC) <- rev(levels(rnaPTC))
+
+DefaultAssay(PTC) <- "RNA"
+levels(PTC) <- rev(levels(PTC))
+FigS4B <- DotPlot(PTC, features = features, cols = c("lightyellow","darkred")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+levels(PTC) <- rev(levels(PTC))
+
+#chromvar data visualization
+
+DefaultAssay(PTC) <- "chromvar"
+
+PTC <- ScaleData(PTC)
+PTC[['chromvar']]@scale.data <- PTC[['chromvar']]@data
+
+PT_chromvar_marker <- FindAllMarkers(
+  object = PTC,
+  only.pos = TRUE,
+  mean.fxn = rowMeans,
+  fc.name = "avg_diff"
+) 
+
+pfm <- getMatrixSet(
+  x = JASPAR2022,
+  opts = list(collection = "CORE", tax_group = 'vertebrates', all_versions = F)
+)
+
+motifLookup <- PT_chromvar_marker$gene
+motifNames <- sapply(motifLookup, function(x) pfm@listData[[x]]@name)
+PT_chromvar_marker$gene2<- motifNames
+
+PT_chromvar_marker %>%
+  group_by(cluster) %>%
+  top_n(n = 10, wt = avg_diff) -> top10
+
+unique_tf.list <- unique(top10$gene)
+top10 <- top10[!duplicated(top10$gene),]
+
+aver_chromvar <- AverageExpression(PTC, assays = "chromvar", features = unique_tf.list,slot = "scale.data")
+mat <- aver_chromvar[["chromvar"]]
+rownames(mat) <- paste0(top10$gene2," (",top10$gene,")")
+Fig2C_heatmap_3 <- pheatmap::pheatmap(mat,scale = "row",cluster_cols=F,cluster_rows = F,show_rownames=T) #520x520
+
+Fig2D_hnf4a <- FeaturePlot(PTC,"MA0114.4",cols =jdb_palette("brewer_heat"),
+            pt.size = 0.3,max.cutoff = "q99",min.cutoff = "q1") 
+Fig2D_rela <- FeaturePlot(PTC,"MA0107.1",cols =jdb_palette("brewer_heat"),
+            pt.size = 0.3,max.cutoff = "q99",min.cutoff = "q1") 
+FigS5_nfe2l2 <- FeaturePlot(PTC,"MA0150.2",cols =jdb_palette("brewer_heat"),
+                          pt.size = 0.3,max.cutoff = "q99",min.cutoff = "q1") 
+Fig2D_junfos <- FeaturePlot(PTC,"MA0099.3",cols =jdb_palette("brewer_heat"),
+                          pt.size = 0.3,max.cutoff = "q99",min.cutoff = "q1") 
+
+Idents(PTC) <- "time"
+day42 <- subset(PTC,idents = "42day")
+Idents(day42) <- "subtype"
+DefaultAssay(day42) <- "chromvar"
+FigS6A <- FeaturePlot(day42,"MA0107.1",cols =jdb_palette("brewer_heat"),
+            pt.size = 0.3,max.cutoff = "q99",min.cutoff = "q1") 
+FigS6B <- VlnPlot(day42,"MA0107.1",pt.size = 0)+NoLegend() 
+
+Idents(rnaPTC) <- "time"
+day42rna <- subset(rnaPTC,idents = "6weeks")
+Idents(day42rna) <- "subtype"
+FigS7A <- VlnPlot(day42rna,"Pax8",pt.size = 0)+NoLegend() 
+Idents(rnaPTC) <- "subtype"
+FigS7B <- VlnPlot(rnaPTC,"Pax8",pt.size = 0)+NoLegend() 
+
+#Injured S3 analysis
+
+InjS3 <- subset(PTC,idents = c("Injured_S3_4hr","Injured_S3_12hr","Injured_S3_2day","Injured_S3_14day"))
+levels(InjS3)  <- c("Injured_S3_4hr","Injured_S3_12hr","Injured_S3_2day","Injured_S3_14day")
+Idents(InjS3) <- "time"
+DefaultAssay(InjS3) <- "chromvar"
+InjS3 <- ScaleData(InjS3)
+#Identify differentially activated TFs among time points in injured S3 (4h - 14 days)
+motif_marker <- FindAllMarkers(
+  object = InjS3,
+  only.pos = TRUE,
+  mean.fxn = rowMeans,
+  fc.name = "avg_diff"
+)
+
+motifLookup <- motif_marker$gene
+motifNames <- sapply(motifLookup, function(x) pfm@listData[[x]]@name)
+motif_marker$gene2<- motifNames
+
+motif_marker %>%
+  group_by(cluster) %>%
+  top_n(n = 10, wt = avg_diff) -> top10
+
+unique_tf.list <- unique(top10$gene)
+top10 <- top10[!duplicated(top10$gene),]
+
+#For heatmapping, including healthy S3 (sham[as before injury] and 42 day [as recovered] for comparison)
+InjS3m <- subset(PTC,idents = c("Healthy_S3_sham","Injured_S3_4hr","Injured_S3_4hr","Injured_S3_12hr","Injured_S3_2day","Injured_S3_14day","Healthy_S3_42day"))
+Idents(InjS3m) <- "time"
+DefaultAssay(InjS3m) <- "chromvar"
+InjS3m[['chromvar']]@scale.data <- InjS3m[['chromvar']]@data
+
+aver_chromvar <- AverageExpression(InjS3m, assays = "chromvar", features = unique_tf.list,slot = "scale.data")
+mat <- aver_chromvar[["chromvar"]]
+rownames(mat) <- paste0(top10$gene2," (",top10$gene,")")
+Fig2E <-  pheatmap::pheatmap(mat,scale = "row",cluster_cols=F,cluster_rows = T,show_rownames=T)
+
+#Trajectory analysis
+library(monocle3)
+library(cicero)
+library(JASPAR2022)
+library(TFBSTools)
+set.seed(1234)
+
+pfm <- getMatrixSet(
+  x = JASPAR2022,
+  opts = list(collection = "CORE", tax_group = 'vertebrates', all_versions = F)
+)
+
+Idents(PTC) <- "subtype_disease"
+S3data <- subset(PTC,idents = c("Injured_S3_2day","Injured_S3_14day","Healthy_S3_14day","Healthy_S3_42day","Failed_repair_PTC_14day","Failed_repair_PTC_42day"))
+levels(S3data) <- c("Injured_S3_2day","Injured_S3_14day","Healthy_S3_14day","Healthy_S3_42day","Failed_repair_PTC_14day","Failed_repair_PTC_42day"))
+DefaultAssay(S3data)  <- "peaks"
+
+#Cicero analysis
+count_data <- GetAssayData(S3data, slot = "counts")
+summ <- summary(count_data)
+summ_frame <- data.frame(peak = rownames(count_data)[summ$i],
+                         cell.id = colnames(count_data)[summ$j],
+                         count = summ$x)
+
+# create cell data set object with cicero constructor
+input_cds <- make_atac_cds(summ_frame, binarize = F)
+meta <- S3data@meta.data
+meta$cells <- rownames(meta)
+metanames <- rownames(meta)
+meta <- merge(input_cds@colData,meta,by.x="cells", by.y="cells")
+rownames(meta) <- meta@listData[["cells"]]
+input_cds@colData <- meta
+
+input_cds <- detect_genes(input_cds)
+input_cds <- estimate_size_factors(input_cds)
+input_cds <- preprocess_cds(input_cds, method = "LSI",num_dim=30)
+input_cds <- align_cds(input_cds, alignment_group = "orig.ident",preprocess_method = "LSI")
+input_cds <- reduce_dimension(input_cds, 
+                              preprocess_method = "Aligned")
+input_cds <- cluster_cells(input_cds)
+input_cds <- learn_graph(input_cds,close_loop = F)
+input_cds <- order_cells(input_cds)
+
+Fig2F_1 <-   plot_cells(input_cds,
+                             color_cells_by = "pseudotime",
+                             label_groups_by_cluster=FALSE,
+                             label_leaves=FALSE,
+                             label_branch_points=FALSE,
+                             label_roots=FALSE,
+                             label_cell_groups=T,show_trajectory_graph=T,group_label_size=3.6)
+
+Fig2F_2 <-   plot_cells(input_cds,color_cells_by = "subtype_disease",label_cell_groups=F,show_trajectory_graph=F,group_label_size=3.6)
+
+#Analysis on FR-PTC
+FRPTC <- subset(PTC,idents = c("Failed_repair_PTC_2day","Failed_repair_PTC_14day","Failed_repair_PTC_42day"))
+levels(FRPTC) <- c("Failed_repair_PTC_2day","Failed_repair_PTC_14day","Failed_repair_PTC_42day")
+
+DefaultAssay(FRPTC) <- "chromvar"
+motif_marker <- FindAllMarkers(
+  object = FRPTC,
+  only.pos = TRUE,
+  mean.fxn = rowMeans,
+  fc.name = "avg_diff"
+)
+
+motifLookup <- motif_marker$gene
+motifNames <- sapply(motifLookup, function(x) pfm@listData[[x]]@name)
+motif_marker$gene2<- motifNames
+
+motif_marker %>%
+  group_by(cluster) %>%
+  top_n(n = 5, wt = avg_diff) -> top5
+
+unique_tf.list <- unique(top5$gene)
+top5 <- top5[!duplicated(top5$gene),]
+
+FRPTC <- ScaleData(FRPTC)
+FRPTC[['chromvar']]@scale.data <- FRPTC[['chromvar']]@data 
+aver_chromvar <- AverageExpression(FRPTC, assays = "chromvar", features = unique_tf.list,slot = "scale.data")
+mat <- aver_chromvar[["chromvar"]]
+rownames(mat) <- paste0(top5$gene2," (",top5$gene,")")
+Fig2G <- pheatmap::pheatmap(mat,cluster_cols=F,cluster_rows = T,show_rownames=T,scale = "row")

@@ -25,8 +25,8 @@ LEUK <- AddMetaData(LEUK,subltype.predictions)
 Idents(LEUK) <- "predicted.id"
 levels(LEUK) <-levels(LEUKrna)
 
-FigS10A <-  DimPlot(LEUK,label = T,repel = T) #700x560
-FigS10B <-  VlnPlot(LEUK,"prediction.score.max",pt.size = 0) #630x340
+FigS12D <-  DimPlot(LEUK,label = T,repel = T) #700x560
+FigS12E <-  VlnPlot(LEUK,"prediction.score.max",pt.size = 0) #630x340
 LEUK@meta.data[["predicted.id"]] <- LEUK@active.ident
 Idents(LEUK) <- "subtype"
 
@@ -40,13 +40,13 @@ FigS11A_2 <- DotPlot(LEUKrna, features = features, cols = c("lightyellow","darkr
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) #700x400
 levels(LEUKrna) <- rev(levels(LEUKrna))
 
-levels(LEUKrna) <- rev(levels(LEUKrna)) #859x473
+levels(LEUKrna) <- rev(levels(LEUKrna)) 
 FigS11B_1 <- DotPlot(LEUKrna, features = "Fcgr1", cols = c("lightyellow","darkred")) +
   RotatedAxis() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) #500x350
 levels(LEUKrna) <- rev(levels(LEUKrna))
 
-levels(LEUKrna) <- rev(levels(LEUKrna)) #859x473
+levels(LEUKrna) <- rev(levels(LEUKrna))
 FigS11B_2 <- DotPlot(LEUKrna, features = "Zbtb49", cols = c("lightyellow","darkred")) +
   RotatedAxis() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) #500x350
@@ -59,9 +59,9 @@ FigS11C_2 <-  VlnPlot(LEUKrna,"Csf1r",pt.size = 0.1)+NoLegend() #630x340
 DefaultAssay(LEUK) <- "peaks"
 Idents(LEUK) <- "subtype"
 
-Fig5C <- DimPlot(LEUK)+NoLegend()
+FigS12A <- DimPlot(LEUK)+NoLegend()
 
-Fig5E_Csf1r <-CoveragePlot(
+FigS12C_Csf1r <-CoveragePlot(
   object = LEUK,
   region = "chr18-61105000-61107000",
   annotation = T,
@@ -70,7 +70,7 @@ Fig5E_Csf1r <-CoveragePlot(
   extend.downstream = 0,
 ) 
 
-Fig5E_cd80 <-CoveragePlot(
+FigS12C_cd80 <-CoveragePlot(
   object = LEUK,
   region = "chr16-38456500-38458500",
   annotation = T,
@@ -79,7 +79,7 @@ Fig5E_cd80 <-CoveragePlot(
   extend.downstream = 0,
 ) 
 
-Fig5E_itga9 <-CoveragePlot(
+FigS12C_itga9 <-CoveragePlot(
   object = LEUK,
   region = "chr9-118605750-118607750",
   annotation = T,
@@ -88,7 +88,7 @@ Fig5E_itga9 <-CoveragePlot(
   extend.downstream = 0,
 ) 
 
-Fig5E_mrc1 <-CoveragePlot(
+FigS12C_mrc1 <-CoveragePlot(
   object = LEUK,
   region = "chr2-14228000-14230000",
   annotation = T,
@@ -97,7 +97,7 @@ Fig5E_mrc1 <-CoveragePlot(
   extend.downstream = 0,
 ) 
 
-Fig5E_Plcb1 <-CoveragePlot(
+FigS12C_Plcb1 <-CoveragePlot(
   object = LEUK,
   region = "chr2-134785500-134787500",
   annotation = T,
@@ -106,7 +106,7 @@ Fig5E_Plcb1 <-CoveragePlot(
   extend.downstream = 0,
 ) 
 
-Fig5E_ccr2 <-CoveragePlot(
+FigS12C_ccr2 <-CoveragePlot(
   object = LEUK,
   region = "chr9-124101000-124103000",
   annotation = T,
@@ -115,7 +115,7 @@ Fig5E_ccr2 <-CoveragePlot(
   extend.downstream = 0,
 ) 
 
-Fig5E_flt3 <-CoveragePlot(
+FigS12C_flt3 <-CoveragePlot(
   object = LEUK,
   region = "chr5-147399250-147401250",
   annotation = T,
@@ -124,7 +124,7 @@ Fig5E_flt3 <-CoveragePlot(
   extend.downstream = 0,
 ) 
 
-Fig5E_themis <-CoveragePlot(
+FigS12C_themis <-CoveragePlot(
   object = LEUK,
   region = "chr10-28667500-28669500",
   annotation = T,
@@ -133,7 +133,7 @@ Fig5E_themis <-CoveragePlot(
   extend.downstream = 0,
 ) 
 
-Fig5E_cd19 <-CoveragePlot(
+FigS12C_cd19 <-CoveragePlot(
   object = LEUK,
   region = "chr7-126414000-126416000",
   annotation = T,
@@ -159,7 +159,7 @@ ggplotColours <- function(n = 6, h = c(0, 360) + 15){
 colours <- ggplotColours(n=8)
 
 library(ggplot2)
-Fig5D = ggplot(lm, aes(x = time, fill = variable, y = value)) + 
+FiS12B = ggplot(lm, aes(x = time, fill = variable, y = value)) + 
   geom_bar(stat = "identity", colour = "black")  + 
   scale_y_continuous(limits = c(0, 0.05),expand = c(0, 0)) +theme(
     panel.background = element_rect(fill='transparent'))  + 
@@ -198,18 +198,18 @@ LEUK2[['chromvar']]@scale.data <- LEUK2[['chromvar']]@data
 aver_chromvar <- AverageExpression(LEUK2, assays = "chromvar", features = unique_tf.list,slot = "scale.data")
 mat <- aver_chromvar[["chromvar"]]
 rownames(mat) <- paste0(top3$gene2," (",top3$gene,")")
-Fig5G <- pheatmap::pheatmap(mat,scale = "row",cluster_cols=F,cluster_rows = T,color =jdb_palette("brewer_yes"))
+FigS13A <- pheatmap::pheatmap(mat,scale = "row",cluster_cols=F,cluster_rows = T,color =jdb_palette("brewer_yes"))
 
 Idents(LEUK2) <- "time"
-FigS11A <- VlnPlot(LEUK2,"MA0727.1",pt.size = 0)+NoLegend()
-FigS11B <- VlnPlot(LEUK2,"MA1128.1",pt.size = 0)+NoLegend()
+FigS13B <- VlnPlot(LEUK2,"MA0727.1",pt.size = 0)+NoLegend()
+FigS13C <- VlnPlot(LEUK2,"MA1128.1",pt.size = 0)+NoLegend()
 
 Idents(LEUK2) <- "subtype"
 DefaultAssay(LEUK2) <- "RNA"
 features <- c("Il1b","Cd80","Nos2","Chil3", "Tnf","C1qc","Mrc1","Cd86","Tgfb1","Ccl2","Arg1","Cd163","Il10","Ccr2")
 levels(LEUK2) <- rev(levels(LEUK2))
 
-Fig5F <- DotPlot(LEUK2, features = features, cols = c("lightyellow","darkred")) +
+FigS12F <- DotPlot(LEUK2, features = features, cols = c("lightyellow","darkred")) +
   RotatedAxis() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 levels(LEUK2) <- rev(levels(LEUK2))

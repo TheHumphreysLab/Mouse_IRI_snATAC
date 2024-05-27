@@ -1,0 +1,51 @@
+library(Seurat) #3.2.0
+library(ggplot2)
+library(sctransform)
+library(harmony)
+library(Rcpp)
+library(dplyr)
+library(BuenColors)
+library(openxlsx)
+set.seed(1234)
+
+rnaAggr <- readRDS("AKIContAggr.rds")
+DimPlot(rnaAggr,label = T)
+
+DefaultAssay(rnaAggr) <- "RNA"
+levels(rnaAggr) <- rev(levels(rnaAggr))
+features <- c("SLC34A1","LRP2","HAVCR1","CFH","CLDN16","SLC12A1","SLC12A3",
+              "SLC8A1","AQP2","SLC26A7","SLC26A4","NPHS2","EMCN","PDGFRB","PTPRC")
+FigS14A <- DotPlot(rnaAggr, features = features, cols = c("lightyellow","royalblue")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+levels(rnaAggr) <- rev(levels(rnaAggr))
+
+PTCrna <- subset(rnaAggr,idents = c("PT","iPT"))
+PTCrna@meta.data[["celltype2"]] <- paste0(PTCrna@meta.data[["celltype_all"]],"_",PTCrna@meta.data[["disease"]])
+FigS17A <- VlnPlot(PTCrna,"VCAM1",split.by = "disease")
+
+FigS19A <- FeaturePlot(rnaAggr,"CREB5",split.by = "disease")
+Fig5C_1 <- FeaturePlot(rnaAggr,"VCAM1",split.by = "disease",pt.size = 0.2) #775x370
+Fig5C_2 <- FeaturePlot(rnaAggr,"HAVCR1",split.by = "disease",pt.size = 0.2) #775x370
+
+FigS19B <- FeaturePlot(rnaAggr,"CCL2",split.by = "disease",order = T)
+FigS19C <- FeaturePlot(rnaAggr,"CSF1",split.by = "disease",order = T)
+FigS19D <- FeaturePlot(rnaAggr,"CD47",split.by = "disease",order = T)
+
+#VISION
+library(VISION)
+signatures <- "h.all.v6.2.symbols.gmt"
+vision.obj <- Vision(PTCrna, signatures = signatures)
+options(mc.cores=24)
+vision.obj <- analyze(vision.obj)
+
+sigScores <- getSignatureScores(vision.obj)
+sigScores <- as.data.frame(sigScores)
+PTCrna[['GSEA']] <- CreateAssayObject(counts = t(sigScores))
+DefaultAssay(PTCrna) <- "GSEA"
+PTCrna <- ScaleData(PTCrna)
+Idents(PTCrna) <- "celltype2"
+levels(PTCrna) <- levels(PTCrna)[c(3,1,4,2)]
+aver_GSEA <- AverageExpression(PTCrna, assays = "GSEA")
+mat <- aver_GSEA[["GSEA"]]
+Fig6C <- pheatmap::pheatmap(mat,scale = "row",cluster_cols=F,cluster_rows = T)

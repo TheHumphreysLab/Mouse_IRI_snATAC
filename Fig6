@@ -1,0 +1,97 @@
+library(Seurat) #3.2.0
+library(Signac)
+library(ggplot2)
+library(sctransform)
+library(harmony)
+library(Rcpp)
+library(dplyr)
+library(BuenColors)
+library(openxlsx)
+
+library(GenomeInfoDb)
+library(EnsDb.Hsapiens.v86)
+library(tibble)
+library(JASPAR2022)
+library(TFBSTools)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(patchwork)
+set.seed(1234)
+
+atacAggr <- readRDS("AKIContAggrATAC.rds")
+features <- c("SLC34A1","LRP2","SLC5A2","SLC5A1","HAVCR1","CFH",
+              "SLC12A1","SLC12A3","SLC8A1","AQP2","SLC26A7",
+              "SLC26A4","NPHS2","EMCN","ACTA2","CSF1R","CSF2RA","MRC1","PAX5","MS4A1","CD247","CD96")
+DefaultAssay(atacAggr) <- "RNA"
+
+levels(atacAggr) <- rev(levels(atacAggr))
+FigS15D <- DotPlot(atacAggr, features = features, cols = c("lightyellow","darkred")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+levels(atacAggr) <- rev(levels(atacAggr))
+
+PTC <- subset(atacAggr,idents = c("PCT","PST","iPT"))
+new.cluster.ids <- c("PCT","PST","iPT")
+names(new.cluster.ids) <- levels(PTC)
+PTC <- RenameIdents(PTC, new.cluster.ids)
+PTC@meta.data[["subtype"]] <- PTC@active.ident
+PTC@meta.data[["subtype_disease"]] <- paste0(PTC@meta.data[["subtype"]],"_",PTC@meta.data[["disease"]])
+Idents(PTC) <- "subtype_disease"
+levels(PTC) <- c("PCT_control","PCT_AKI","PST_control","PST_AKI","iPT_control","iPT_AKI")
+DefaultAssay(PTC) <- "chromvar"
+
+# Get a list of motif position frequency matrices from the JASPAR database
+pfm <- getMatrixSet(
+  x = JASPAR2022,
+  opts = list(collection = "CORE", tax_group = 'vertebrates', all_versions = F)
+)
+
+marker <- FindAllMarkers(PTC,
+                         mean.fxn = rowMeans,
+                         fc.name = "avg_diff",
+                         only.pos = T)
+
+PTC <- ScaleData(PTC)
+PTC[['chromvar']]@scale.data <- PTC[['chromvar']]@data 
+
+motifLookup <- marker$gene
+motifNames <- sapply(motifLookup, function(x) pfm@listData[[x]]@name)
+marker$gene2<- motifNames
+
+marker %>%
+  group_by(cluster) %>%
+  top_n(n = 6, wt = avg_diff) -> top6
+
+unique_tf.list <- unique(top6$gene)
+top6 <- top6[!duplicated(top6$gene),]
+
+aver_chromvar <- AverageExpression(PTC, assays = "chromvar", features = unique_tf.list,slot = "scale.data")
+mat <- aver_chromvar[["chromvar"]]
+rownames(mat) <- paste0(top6$gene2," (",top6$gene,")")
+rownames(mat) <-  rownames(mat)
+mat <- mat[c(3:5,13:18,1,2,6,23,24,7:12,19:22),]
+Fig6B_heatmap <- pheatmap::pheatmap(mat,scale = "row",cluster_cols=F,cluster_rows = F,
+                                      show_rownames=T) #400x600
+
+Fig6B_hnf4a_1 <- VlnPlot(PTC,"MA0114.4",pt.size = 0) 
+FigS5B_Nfe2l2_1 <- VlnPlot(PTC,"MA0150.2",pt.size = 0) 
+Fig6D_rela_1 <- VlnPlot(PTC,"MA0107.1",pt.size = 0) 
+Fig6C_junfos_1 <- VlnPlot(PTC,"MA0099.3",pt.size = 0)
+
+Fig6B_hnf4a_2 <- FeaturePlot(atacAggr,"MA0114.4",cols =jdb_palette("brewer_heat"),
+                           pt.size = 0.3,max.cutoff = "q99",min.cutoff = "q1",split.by = "disease") 
+Fig6D_rela_2 <- FeaturePlot(atacAggr,"MA0107.1",cols =jdb_palette("brewer_heat"),
+                          pt.size = 0.3,max.cutoff = "q99",min.cutoff = "q1",split.by = "disease") 
+FigS5B_Nfe2l2_2 <- FeaturePlot(atacAggr,"MA0150.2",cols =jdb_palette("brewer_heat"),
+                            pt.size = 0.3,max.cutoff = "q99",min.cutoff = "q1",split.by = "disease") 
+Fig6C_junfos_2 <- FeaturePlot(atacAggr,"MA0099.3",cols =jdb_palette("brewer_heat"),
+                            pt.size = 0.3,max.cutoff = "q99",min.cutoff = "q1",split.by = "disease") 
+#840x370
+
+FigS17B <- CoveragePlot(
+  object = PTC,
+  region = "VCAM1",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 2000,
+  extend.downstream = 2000,
+) 

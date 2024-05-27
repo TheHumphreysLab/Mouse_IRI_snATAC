@@ -9,7 +9,7 @@ library(openxlsx)
 set.seed(1234)
 
 rnaAggr <- readRDS("AKIContAggr.rds")
-DimPlot(rnaAggr,label = T)
+Fig5A_1 <- DimPlot(rnaAggr,label = T)
 
 DefaultAssay(rnaAggr) <- "RNA"
 levels(rnaAggr) <- rev(levels(rnaAggr))
@@ -28,9 +28,38 @@ FigS19A <- FeaturePlot(rnaAggr,"CREB5",split.by = "disease")
 Fig5C_1 <- FeaturePlot(rnaAggr,"VCAM1",split.by = "disease",pt.size = 0.2) #775x370
 Fig5C_2 <- FeaturePlot(rnaAggr,"HAVCR1",split.by = "disease",pt.size = 0.2) #775x370
 
-FigS19B <- FeaturePlot(rnaAggr,"CCL2",split.by = "disease",order = T)
-FigS19C <- FeaturePlot(rnaAggr,"CSF1",split.by = "disease",order = T)
-FigS19D <- FeaturePlot(rnaAggr,"CD47",split.by = "disease",order = T)
+FigS19_B <- FeaturePlot(rnaAggr,"CCL2",split.by = "disease",order = T)
+FigS19_C <- FeaturePlot(rnaAggr,"CSF1",split.by = "disease",order = T)
+FigS19_D <- FeaturePlot(rnaAggr,"CD47",split.by = "disease",order = T)
+
+iPT <- subset(rnaAggr,idents = "iPT")
+Idents(iPT) <- "disease"
+Data_S13 <- FindMarkers(iPT,ident.1 = "AKI",ident.2 = "control",min.pct = 0.2)
+
+features1 <- c("HAVCR1","AJAP1","KCNIP4","SLC17A3","VCAM1","DCC","FKBP5","PDK4")
+DefaultAssay(iPT) <- "RNA"
+levels(iPT) <- rev(levels(iPT))
+Fig5B <- DotPlot(iPT, features = features1) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #550x320
+levels(iPT) <- rev(levels(iPT))
+
+features2 <- c("CCL2","CSF1","CD47")
+
+levels(iPT) <- rev(levels(iPT))
+FigS19_A <- DotPlot(iPT, features = features2) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #460x320
+levels(iPT) <- rev(levels(iPT))
+
+iPT2 <- subset(iPT,downsample = 747) #control/AKI both 747 nuclei (same number)
+FigS18A <- VlnPlot(iPT2,"VCAM1") #640x400
+
+levels(iPT2) <- rev(levels(iPT2))
+FigS18B <- DotPlot(iPT2, features = c("VCAM1","HAVCR1","CCL2")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #530x380
+levels(iPT2) <- rev(levels(iPT2))
 
 #VISION
 library(VISION)
@@ -48,4 +77,4 @@ Idents(PTCrna) <- "celltype2"
 levels(PTCrna) <- levels(PTCrna)[c(3,1,4,2)]
 aver_GSEA <- AverageExpression(PTCrna, assays = "GSEA")
 mat <- aver_GSEA[["GSEA"]]
-Fig6C <- pheatmap::pheatmap(mat,scale = "row",cluster_cols=F,cluster_rows = T)
+Fig6D <- pheatmap::pheatmap(mat,scale = "row",cluster_cols=F,cluster_rows = T)

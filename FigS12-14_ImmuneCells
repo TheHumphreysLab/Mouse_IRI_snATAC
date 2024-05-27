@@ -1,0 +1,201 @@
+library(Signac)
+library(Seurat)
+library(GenomeInfoDb)
+library(harmony)
+library(EnsDb.Mmusculus.v79)
+library(ggplot2)
+library(tibble)
+library(dplyr)
+library(harmony)
+library(BuenColors)
+library(openxlsx) 
+set.seed(1234)
+
+LEUK <- readRDS("IRIatac_LEUK.rds")
+LEUKrna <- readRDS("IRIrna_LEUK.rds") #From Kirita et al
+LEUKrna@meta.data[["subtype"]] <- LEUKrna@active.ident
+DefaultAssay(LEUK) <- "RNA"
+
+transfer_anchors <- FindTransferAnchors(reference = LEUKrna, query = LEUK, features = VariableFeatures(object = LEUKrna), 
+                                        reference.assay = "RNA", query.assay = "RNA", reduction = "cca")
+
+subltype.predictions <- TransferData(anchorset = transfer_anchors, refdata = LEUKrna$subtype, 
+                                           weight.reduction = LEUK[["lsi"]], dims = 2:30)
+LEUK <- AddMetaData(LEUK,subltype.predictions)
+Idents(LEUK) <- "predicted.id"
+levels(LEUK) <-levels(LEUKrna)
+FigS10A <-  DimPlot(LEUK,label = T,repel = T) #700x560
+FigS10B <-  VlnPlot(LEUK,"prediction.score.max",pt.size = 0) #630x340
+LEUK@meta.data[["predicted.id"]] <- LEUK@active.ident
+Idents(LEUK) <- "subtype"
+
+Fig5A_1 <- DimPlot(LEUKrna)+NoLegend() #500x450
+features <- c("Cd80","Mrc1","Itga9","Plcb1","Gpnmb","Flt3","Themis","Cd19")
+
+levels(LEUKrna) <- rev(levels(LEUKrna)) #859x473
+Fig5A_2 <- DotPlot(LEUKrna, features = features, cols = c("lightyellow","darkred")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #630x390
+levels(LEUKrna) <- rev(levels(LEUKrna))
+
+Fig5B_1 <-  VlnPlot(LEUKrna,"Ccr2",pt.size = 0.1)+NoLegend() #630x340
+Fig5B_2 <-  VlnPlot(LEUKrna,"Csf1r",pt.size = 0.1)+NoLegend() #630x340
+
+
+DefaultAssay(LEUK) <- "peaks"
+Idents(LEUK) <- "subtype"
+
+Fig5C <- DimPlot(LEUK)+NoLegend()
+
+Fig5E_Csf1r <-CoveragePlot(
+  object = LEUK,
+  region = "chr18-61105000-61107000",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig5E_cd80 <-CoveragePlot(
+  object = LEUK,
+  region = "chr16-38456500-38458500",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig5E_itga9 <-CoveragePlot(
+  object = LEUK,
+  region = "chr9-118605750-118607750",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig5E_mrc1 <-CoveragePlot(
+  object = LEUK,
+  region = "chr2-14228000-14230000",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig5E_Plcb1 <-CoveragePlot(
+  object = LEUK,
+  region = "chr2-134785500-134787500",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig5E_ccr2 <-CoveragePlot(
+  object = LEUK,
+  region = "chr9-124101000-124103000",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig5E_flt3 <-CoveragePlot(
+  object = LEUK,
+  region = "chr5-147399250-147401250",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig5E_themis <-CoveragePlot(
+  object = LEUK,
+  region = "chr10-28667500-28669500",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+Fig5E_cd19 <-CoveragePlot(
+  object = LEUK,
+  region = "chr7-126414000-126416000",
+  annotation = T,
+  peaks = F,
+  extend.upstream = 0,
+  extend.downstream = 0,
+) 
+
+
+LEUK@meta.data[["subtype"]] <- LEUK@active.ident
+LEUK@meta.data[["subtype2"]] <- paste0(LEUK@meta.data[["subtype"]],"-",LEUK@meta.data[["time"]])
+stat <- as.data.frame(table(LEUK@meta.data[["subtype2"]]))
+write.csv(stat,"IRIatac_LEUK_percentage.csv") #process to obtain the percentage in each time point whole dataset
+LEUKpercentage <- read.csv("LEUKpercentage_final.csv")
+#convert data frame from a "wide" format to a "long" format
+library(reshape2)
+lm = melt(LEUKpercentage, id = "time")
+
+ggplotColours <- function(n = 6, h = c(0, 360) + 15){
+  if ((diff(h) %% 360) < 1) h[2] <- h[2] - 360/n
+  hcl(h = (seq(h[1], h[2], length = n)), c = 100, l = 65)
+}
+colours <- ggplotColours(n=8)
+
+library(ggplot2)
+Fig5D = ggplot(lm, aes(x = time, fill = variable, y = value)) + 
+  geom_bar(stat = "identity", colour = "black")  + 
+  scale_y_continuous(limits = c(0, 0.05),expand = c(0, 0)) +theme(
+    panel.background = element_rect(fill='transparent'))  + 
+  scale_fill_manual(values = colours) 
+
+#transcription factor motifs
+DefaultAssay(LEUK) <- "chromvar"
+library(JASPAR2022)
+library(TFBSTools)
+
+# Get a list of motif position frequency matrices from the JASPAR database
+pfm <- getMatrixSet(
+  x = JASPAR2022,
+  opts = list(collection = "CORE", tax_group = 'vertebrates', all_versions = F)
+)
+LEUK2 <- subset(LEUK, idents = c("Mac1","Mac2","Mac3","Mac4","Mac5"))
+
+motif_marker <- FindAllMarkers(
+  object = LEUK2,
+  only.pos = TRUE,
+  mean.fxn = rowMeans,
+  fc.name = "avg_diff"
+)
+
+motifLookup <- motif_marker$gene
+motifNames <- sapply(motifLookup, function(x) pfm@listData[[x]]@name)
+motif_marker$gene2<- motifNames
+
+motif_marker %>%
+  group_by(cluster) %>%
+  top_n(n = 3, wt = avg_diff) -> top3
+
+unique_tf.list <- unique(top3$gene)
+top3 <- top3[!duplicated(top3$gene),]
+LEUK2[['chromvar']]@scale.data <- LEUK2[['chromvar']]@data 
+aver_chromvar <- AverageExpression(LEUK2, assays = "chromvar", features = unique_tf.list,slot = "scale.data")
+mat <- aver_chromvar[["chromvar"]]
+rownames(mat) <- paste0(top3$gene2," (",top3$gene,")")
+Fig5G <- pheatmap::pheatmap(mat,scale = "row",cluster_cols=F,cluster_rows = T,color =jdb_palette("brewer_yes"))
+
+Idents(LEUK2) <- "time"
+FigS11A <- VlnPlot(LEUK2,"MA0727.1",pt.size = 0)+NoLegend()
+FigS11B <- VlnPlot(LEUK2,"MA1128.1",pt.size = 0)+NoLegend()
+
+Idents(LEUK2) <- "subtype"
+DefaultAssay(LEUK2) <- "RNA"
+features <- c("Il1b","Cd80","Nos2","Chil3", "Tnf","C1qc","Mrc1","Cd86","Tgfb1","Ccl2","Arg1","Cd163","Il10","Ccr2")
+levels(LEUK2) <- rev(levels(LEUK2))
+
+Fig5F <- DotPlot(LEUK2, features = features, cols = c("lightyellow","darkred")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+levels(LEUK2) <- rev(levels(LEUK2))

@@ -24,22 +24,36 @@ subltype.predictions <- TransferData(anchorset = transfer_anchors, refdata = LEU
 LEUK <- AddMetaData(LEUK,subltype.predictions)
 Idents(LEUK) <- "predicted.id"
 levels(LEUK) <-levels(LEUKrna)
+
 FigS10A <-  DimPlot(LEUK,label = T,repel = T) #700x560
 FigS10B <-  VlnPlot(LEUK,"prediction.score.max",pt.size = 0) #630x340
 LEUK@meta.data[["predicted.id"]] <- LEUK@active.ident
 Idents(LEUK) <- "subtype"
 
-Fig5A_1 <- DimPlot(LEUKrna)+NoLegend() #500x450
-features <- c("Cd80","Mrc1","Itga9","Plcb1","Gpnmb","Flt3","Themis","Cd19")
+FigS11A_1 <- DimPlot(LEUKrna)+NoLegend() #500x450
 
-levels(LEUKrna) <- rev(levels(LEUKrna)) #859x473
-Fig5A_2 <- DotPlot(LEUKrna, features = features, cols = c("lightyellow","darkred")) +
+features <- c("Mrc1","Itga9","Adgre1","Itgam", "Plcb1","Cd80","Fcgr1","Zbtb49","Gpnmb","Flt3","Themis","Cd19")
+
+levels(LEUKrna) <- rev(levels(LEUKrna))
+FigS11A_2 <- DotPlot(LEUKrna, features = features, cols = c("lightyellow","darkred")) +
   RotatedAxis() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #630x390
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #700x400
 levels(LEUKrna) <- rev(levels(LEUKrna))
 
-Fig5B_1 <-  VlnPlot(LEUKrna,"Ccr2",pt.size = 0.1)+NoLegend() #630x340
-Fig5B_2 <-  VlnPlot(LEUKrna,"Csf1r",pt.size = 0.1)+NoLegend() #630x340
+levels(LEUKrna) <- rev(levels(LEUKrna)) #859x473
+FigS11B_1 <- DotPlot(LEUKrna, features = "Fcgr1", cols = c("lightyellow","darkred")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #500x350
+levels(LEUKrna) <- rev(levels(LEUKrna))
+
+levels(LEUKrna) <- rev(levels(LEUKrna)) #859x473
+FigS11B_2 <- DotPlot(LEUKrna, features = "Zbtb49", cols = c("lightyellow","darkred")) +
+  RotatedAxis() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) #500x350
+levels(LEUKrna) <- rev(levels(LEUKrna))
+
+FigS11C_1 <-  VlnPlot(LEUKrna,"Ccr2",pt.size = 0.1)+NoLegend() #630x340
+FigS11C_2 <-  VlnPlot(LEUKrna,"Csf1r",pt.size = 0.1)+NoLegend() #630x340
 
 
 DefaultAssay(LEUK) <- "peaks"
